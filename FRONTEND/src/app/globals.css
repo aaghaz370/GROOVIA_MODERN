@@ -24,6 +24,10 @@
   --player-bg: #09090b;
 }
 
+html {
+  font-size: 105%;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
