@@ -42,11 +42,11 @@ const SpeedDial = () => {
 
     if (loading) {
         return (
-            <div className="px-1 py-4 md:hidden">
+            <div className="px-0 py-3 md:hidden">
                 <div className="mb-4">
                     <div className="h-6 w-24 bg-white/10 rounded animate-pulse"></div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1">
                     {[...Array(9)].map((_, i) => (
                         <div key={i} className="aspect-square bg-zinc-900 rounded-xl animate-pulse"></div>
                     ))}
@@ -56,14 +56,14 @@ const SpeedDial = () => {
     }
 
     return (
-        <div className="px-1 py-4 md:hidden">
+        <div className="px-0 py-3 md:hidden">
             {/* Header - Just "Trending" */}
             <div className="mb-4">
                 <h2 className="text-2xl font-bold text-white">Trending</h2>
             </div>
 
             {/* 3x3 Grid */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1">
                 {songs.map((song) => (
                     <div
                         key={song.id}
