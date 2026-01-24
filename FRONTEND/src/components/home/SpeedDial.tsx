@@ -42,7 +42,7 @@ const SpeedDial = () => {
 
     if (loading) {
         return (
-            <div className="px-2 py-6 md:hidden">
+            <div className="px-1 py-4 md:hidden">
                 <div className="mb-4">
                     <div className="h-6 w-24 bg-white/10 rounded animate-pulse"></div>
                 </div>
@@ -56,7 +56,7 @@ const SpeedDial = () => {
     }
 
     return (
-        <div className="px-2 py-6 md:hidden">
+        <div className="px-1 py-4 md:hidden">
             {/* Header - Just "Trending" */}
             <div className="mb-4">
                 <h2 className="text-2xl font-bold text-white">Trending</h2>
