@@ -19,7 +19,7 @@ interface ArtistData {
     image: { quality: string; url: string }[];
     followerCount?: string;
     fanCount?: string;
-    bio?: string;
+    bio?: any;
     topSongs?: any[];
     topAlbums?: any[];
     singles?: any[];
