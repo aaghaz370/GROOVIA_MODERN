@@ -80,10 +80,10 @@ const NewSongs = () => {
     return (
         <>
             {/* Mobile View - Large Portrait Cards */}
-            <div className="md:hidden px-3 py-4">
+            <div className="md:hidden py-4">
                 <h2 className="text-2xl font-bold text-white mb-4">New Songs</h2>
 
-                <div className="flex gap-3 overflow-x-scroll scrollbar-hide scroll-smooth snap-x snap-mandatory">
+                <div className="flex gap-3 overflow-x-scroll scrollbar-hide scroll-smooth snap-x snap-mandatory -mx-4 px-4">
                     {songs.map((song) => (
                         <div
                             key={song.id}
@@ -93,7 +93,7 @@ const NewSongs = () => {
                                 url: (song as any).url || '',
                                 downloadUrl: (song as any).downloadUrl || []
                             } as any)}
-                            className="flex-shrink-0 w-[85%] snap-center cursor-pointer group"
+                            className="flex-shrink-0 w-[92%] snap-center cursor-pointer group"
                         >
                             {/* Large Album Art */}
                             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden mb-3">
