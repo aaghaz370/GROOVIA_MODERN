@@ -97,13 +97,13 @@ const TopAlbums = () => {
             {/* Albums Grid - CommunityPlaylists Style */}
             <div
                 ref={scrollRef}
-                className="flex gap-3 md:gap-4 overflow-x-scroll scrollbar-hide scroll-smooth snap-x snap-mandatory px-3 md:px-4"
+                className="flex gap-3 md:gap-4 overflow-x-scroll scrollbar-hide scroll-smooth snap-x snap-mandatory -mx-4 px-4 md:-mr-4 md:pr-4 md:pl-4"
             >
                 {albums.map((album) => (
                     <Link
                         key={album.id}
                         href={`/album/${album.id}`}
-                        className="flex-shrink-0 w-[85%] md:w-[32%] snap-center cursor-pointer group"
+                        className="flex-shrink-0 w-[92%] md:w-[32%] snap-center cursor-pointer group"
                     >
                         {/* Album Card */}
                         <div className="bg-zinc-900/50 rounded-2xl p-4 md:p-5 hover:bg-zinc-900/70 transition-colors">
