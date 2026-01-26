@@ -189,8 +189,8 @@ export default function SearchPage() {
                                     key={filter.id}
                                     onClick={() => setSelectedFilter(filter.id)}
                                     className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-all ${selectedFilter === filter.id
-                                            ? 'bg-primary text-white shadow-lg shadow-primary/30'
-                                            : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800 hover:text-white'
+                                        ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                                        : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800 hover:text-white'
                                         }`}
                                 >
                                     {filter.label}
@@ -202,7 +202,7 @@ export default function SearchPage() {
             </div>
 
             {/* Search Results */}
-            <div className="px-4 md:px-6 pb-6 max-w-7xl mx-auto">
+            <div className="md:px-6 pb-6 max-w-7xl mx-auto">
                 {!query && (
                     <div className="text-center py-20">
                         <BiSearch size={64} className="mx-auto text-gray-600 mb-4" />
@@ -284,8 +284,8 @@ export default function SearchPage() {
                                 </div>
 
                                 {selectedFilter === 'all' ? (
-                                    <div ref={songsScrollRef} className="overflow-x-auto scrollbar-hide scroll-smooth">
-                                        <div className="inline-grid grid-rows-4 grid-flow-col gap-2 auto-cols-[60%] md:auto-cols-[32%]">
+                                    <div ref={songsScrollRef} className="overflow-x-auto scrollbar-hide scroll-smooth -mx-4 px-4">
+                                        <div className="inline-grid grid-rows-4 grid-flow-col gap-2 auto-cols-[90%] md:auto-cols-[32%]">
                                             {results.songs.slice(0, 16).map((song) => (
                                                 <div
                                                     key={song.id}
@@ -308,7 +308,7 @@ export default function SearchPage() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 gap-2">
+                                    <div className="grid grid-cols-1 gap-2 px-4">
                                         {results.songs.map((song) => (
                                             <div key={song.id} onClick={() => playSong({ ...song, type: 'song', url: song.url || '', downloadUrl: song.downloadUrl || [] })} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
                                                 <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-900">
@@ -346,10 +346,10 @@ export default function SearchPage() {
                                     )}
                                 </div>
 
-                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3'} ref={selectedFilter === 'all' ? albumsScrollRef : undefined}>
+                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth -mx-4 px-4' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 px-1'} ref={selectedFilter === 'all' ? albumsScrollRef : undefined}>
                                     <div className={selectedFilter === 'all' ? 'flex gap-4' : 'contents'}>
                                         {results.albums.map((album) => (
-                                            <Link key={album.id} href={`/album/${album.id}`} className={selectedFilter === 'all' ? 'flex-shrink-0 w-[200px]' : ''}>
+                                            <Link key={album.id} href={`/album/${album.id}`} className={selectedFilter === 'all' ? 'flex-shrink-0 w-[185px] md:w-[200px]' : ''}>
                                                 <div className="group cursor-pointer">
                                                     <div className="relative aspect-square rounded-lg overflow-hidden mb-3 bg-zinc-900">
                                                         <Image src={getValidImageUrl(album)} alt={album.name || 'Album'} fill className="object-cover group-hover:scale-105 transition-transform" sizes="200px" />
@@ -381,12 +381,12 @@ export default function SearchPage() {
                                     )}
                                 </div>
 
-                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth' : 'grid grid-cols-3 md:grid-cols-6 gap-3'} ref={selectedFilter === 'all' ? artistsScrollRef : undefined}>
+                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth -mx-4 px-4' : 'grid grid-cols-3 md:grid-cols-6 gap-2 px-1'} ref={selectedFilter === 'all' ? artistsScrollRef : undefined}>
                                     <div className={selectedFilter === 'all' ? 'flex gap-4' : 'contents'}>
                                         {results.artists.map((artist) => (
                                             <Link key={artist.id} href={`/artist/${artist.id}`} className={selectedFilter === 'all' ? 'flex-shrink-0' : ''}>
-                                                <div className="flex flex-col items-center w-[120px] md:w-[160px] group cursor-pointer">
-                                                    <div className="relative w-[120px] h-[120px] md:w-[160px] md:h-[160px] rounded-full overflow-hidden mb-3 bg-zinc-900">
+                                                <div className="flex flex-col items-center w-[140px] md:w-[160px] group cursor-pointer">
+                                                    <div className="relative w-[140px] h-[140px] md:w-[160px] md:h-[160px] rounded-full overflow-hidden mb-3 bg-zinc-900">
                                                         <Image src={getValidImageUrl(artist)} alt={artist.name || 'Artist'} fill className="object-cover" sizes="160px" />
                                                         <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
                                                             <div className="bg-primary text-white p-2.5 rounded-full shadow-2xl">
@@ -421,10 +421,10 @@ export default function SearchPage() {
                                     )}
                                 </div>
 
-                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3'} ref={selectedFilter === 'all' ? playlistsScrollRef : undefined}>
+                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth -mx-4 px-4' : 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 px-1'} ref={selectedFilter === 'all' ? playlistsScrollRef : undefined}>
                                     <div className={selectedFilter === 'all' ? 'flex gap-4' : 'contents'}>
                                         {results.playlists.map((playlist) => (
-                                            <Link key={playlist.id} href={`/playlist/${playlist.id}`} className={selectedFilter === 'all' ? 'flex-shrink-0 w-[165px] md:w-[200px]' : ''}>
+                                            <Link key={playlist.id} href={`/playlist/${playlist.id}`} className={selectedFilter === 'all' ? 'flex-shrink-0 w-[185px] md:w-[200px]' : ''}>
                                                 <div className="group cursor-pointer">
                                                     <div className="relative aspect-square rounded-lg overflow-hidden mb-3 bg-zinc-900">
                                                         <Image src={getValidImageUrl(playlist)} alt={playlist.name || 'Playlist'} fill className="object-cover group-hover:scale-105 transition-transform" sizes="200px" />
