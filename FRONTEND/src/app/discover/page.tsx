@@ -75,8 +75,8 @@ export default function DiscoverPage() {
                             key={category.id}
                             onClick={() => setSelectedCategory(category.id)}
                             className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-all ${selectedCategory === category.id
-                                    ? 'bg-primary text-white shadow-lg shadow-primary/30'
-                                    : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800 hover:text-white'
+                                ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                                : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800 hover:text-white'
                                 }`}
                         >
                             {category.label}
@@ -86,9 +86,9 @@ export default function DiscoverPage() {
             </div>
 
             {/* Playlists Grid */}
-            <div className="px-4 md:px-6 py-6 bg-sidebar">
+            <div className="py-6 md:px-6 bg-sidebar">
                 {loading ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4 px-3">
                         {[...Array(14)].map((_, i) => (
                             <div key={i} className="space-y-3">
                                 <div className="aspect-square bg-zinc-900 rounded-lg animate-pulse"></div>
@@ -98,7 +98,7 @@ export default function DiscoverPage() {
                         ))}
                     </div>
                 ) : playlists.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4 px-3">
                         {playlists.map((playlist) => (
                             <Link
                                 key={playlist.id}
