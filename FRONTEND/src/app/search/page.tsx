@@ -167,9 +167,9 @@ export default function SearchPage() {
         <div className="min-h-screen pb-32 md:pb-24 bg-sidebar">
             {/* Search Header */}
             <div className="pt-6 pb-4 md:px-6 bg-sidebar sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto px-1">
+                <div className="max-w-7xl mx-auto">
                     {/* Search Input */}
-                    <div className="relative mb-4">
+                    <div className="relative mb-4 px-2">
                         <BiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
                         <input
                             type="text"
@@ -183,7 +183,7 @@ export default function SearchPage() {
 
                     {/* Filter Tabs */}
                     {query && (
-                        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                        <div className="flex gap-2 overflow-x-auto scrollbar-hide px-2">
                             {filters.map((filter) => (
                                 <button
                                     key={filter.id}
