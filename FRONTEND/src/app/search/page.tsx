@@ -167,7 +167,7 @@ export default function SearchPage() {
         <div className="min-h-screen pb-32 md:pb-24 bg-sidebar">
             {/* Search Header */}
             <div className="pt-6 pb-4 md:px-6 bg-sidebar sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto px-3">
+                <div className="max-w-7xl mx-auto px-1">
                     {/* Search Input */}
                     <div className="relative mb-4">
                         <BiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
