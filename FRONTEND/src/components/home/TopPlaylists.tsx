@@ -96,7 +96,7 @@ const TopPlaylists = () => {
             {/* Playlists Grid - Apple Music Style (Same as Golden Era) */}
             <div
                 ref={scrollRef}
-                className="flex gap-3 md:gap-4 overflow-x-scroll scrollbar-hide scroll-smooth px-3 md:px-4"
+                className="flex gap-3 md:gap-4 overflow-x-scroll scrollbar-hide scroll-smooth -mx-4 px-4 md:-mr-4 md:pr-4 md:pl-4"
             >
                 {playlists.map((playlist) => (
                     <Link
@@ -104,7 +104,7 @@ const TopPlaylists = () => {
                         href={`/playlist/${playlist.id}`}
                         className="flex-shrink-0 group cursor-pointer"
                     >
-                        <div className="w-[165px] md:w-[200px]">
+                        <div className="w-[185px] md:w-[200px]">
                             {/* Square Album Art */}
                             <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-3 bg-zinc-900">
                                 <Image

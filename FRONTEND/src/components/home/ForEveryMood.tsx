@@ -49,12 +49,12 @@ const ForEveryMood = () => {
             </div>
 
             {/* Mobile: New Songs Style - Large Portrait Cards */}
-            <div className="md:hidden flex gap-3 overflow-x-scroll scrollbar-hide scroll-smooth snap-x snap-mandatory px-3">
+            <div className="md:hidden flex gap-3 overflow-x-scroll scrollbar-hide scroll-smooth snap-x snap-mandatory -mx-4 px-4">
                 {moodPlaylists.map((playlist) => (
                     <Link
                         key={playlist.id}
                         href={`/playlist/${playlist.id}`}
-                        className="flex-shrink-0 w-[85%] snap-center cursor-pointer group"
+                        className="flex-shrink-0 w-[92%] snap-center cursor-pointer group"
                     >
                         {/* Large Portrait Card */}
                         <div className="relative aspect-[3/4] rounded-2xl overflow-hidden mb-3">
@@ -89,7 +89,7 @@ const ForEveryMood = () => {
             {/* Desktop: Community Playlists Style - 3 Cards Visible */}
             <div
                 ref={scrollRef}
-                className="hidden md:flex gap-4 overflow-x-scroll scrollbar-hide scroll-smooth px-4"
+                className="hidden md:flex gap-4 overflow-x-scroll scrollbar-hide scroll-smooth -mr-4 pr-4 pl-4"
             >
                 {moodPlaylists.map((playlist) => (
                     <Link
