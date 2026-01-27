@@ -196,6 +196,15 @@ const MiniPlayer = () => {
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
+                                    playPrevious();
+                                }}
+                                className="text-white opacity-80 active:opacity-100 active:scale-90 transition-all"
+                            >
+                                <BiSkipPrevious size={32} />
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
                                     togglePlay();
                                 }}
                                 className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-black transition-transform active:scale-95 shadow-lg"
