@@ -27,10 +27,8 @@ const PlaylistSchema = new Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-// Force recompilation of model in dev to pick up schema changes
-if (process.env.NODE_ENV === 'development' && models.Playlist) {
-    delete models.Playlist;
-}
+// Standard Mongoose Model Singleton
+
 
 const Playlist = models.Playlist || model('Playlist', PlaylistSchema);
 

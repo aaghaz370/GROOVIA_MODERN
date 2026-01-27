@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { api } from '@/lib/api';
 
 interface Song {
     id: string;
@@ -24,12 +25,13 @@ interface MusicState {
     queue: Song[];
     currentIndex: number;
     lastPlayed: Song[];
+    history: Song[];
 
     playSong: (song: Song) => void;
     pauseSong: () => void;
     resumeSong: () => void;
     setQueue: (songs: Song[]) => void;
-    playNext: (auto?: boolean) => void;
+    playNext: (auto?: boolean) => Promise<void>;
     playPrevious: () => void;
     addToLastPlayed: (song: Song) => void;
     isShuffle: boolean;
@@ -71,6 +73,7 @@ export const useMusicStore = create<MusicState>()(
             queue: [],
             currentIndex: -1,
             lastPlayed: [],
+            history: [],
             isShuffle: false,
             repeatMode: 'off',
             currentTime: 0,
@@ -82,9 +85,15 @@ export const useMusicStore = create<MusicState>()(
             seekTo: (time: number) => set({ seekTime: time }),
 
             playSong: (song) => {
-                const { queue } = get();
+                const { queue, currentSong, history } = get();
                 const audioUrl = getAudioUrl(song);
                 const songWithUrl = { ...song, url: audioUrl };
+
+                // Add current song to history if checking against new song
+                let newHistory = history;
+                if (currentSong && currentSong.id !== song.id) {
+                    newHistory = [...history, currentSong];
+                }
 
                 // Find song index in queue
                 const index = queue.findIndex(s => s.id === song.id);
@@ -93,7 +102,8 @@ export const useMusicStore = create<MusicState>()(
                     currentSong: songWithUrl,
                     isPlaying: true,
                     currentIndex: index >= 0 ? index : get().currentIndex,
-                    seekTime: 0
+                    seekTime: 0,
+                    history: newHistory
                 });
                 get().addToLastPlayed(songWithUrl);
             },
@@ -126,10 +136,10 @@ export const useMusicStore = create<MusicState>()(
                 set({ lastPlayed: [song, ...filtered].slice(0, 24) });
             },
 
-            playNext: (auto = false) => {
-                const { queue, currentIndex, isShuffle, repeatMode } = get();
+            playNext: async (auto = false) => {
+                const { queue, currentIndex, isShuffle, repeatMode, currentSong, history } = get();
 
-                if (queue.length === 0) return;
+                if (queue.length === 0 && !currentSong) return;
 
                 let nextIndex = currentIndex + 1;
 
@@ -154,40 +164,103 @@ export const useMusicStore = create<MusicState>()(
                 else {
                     if (nextIndex >= queue.length) {
                         // End of queue
-                        if (repeatMode === 'off' && auto) {
-                            // Stop playback if requested
-                            set({ isPlaying: false });
-                            return;
+                        if (repeatMode === 'off') {
+                            // Suggestion / Infinite Scroll Logic
+                            if (currentSong) {
+                                try {
+                                    // Try to fetch related songs to append
+                                    const res = await api.get(`/songs/${currentSong.id}/suggestions`);
+                                    const suggestions = res.data?.data || [];
+
+                                    if (suggestions.length > 0) {
+                                        const newQueue = [...queue, ...suggestions];
+                                        set({ queue: newQueue });
+
+                                        // Now we can play the next index (which is at the start of suggestions)
+                                        // nextIndex is already currentIndex + 1, which matches
+                                        const nextSong = newQueue[nextIndex];
+                                        if (nextSong) {
+                                            const audioUrl = getAudioUrl(nextSong);
+                                            const songWithUrl = { ...nextSong, url: audioUrl };
+
+                                            const newHistory = currentSong ? [...history, currentSong] : history;
+
+                                            set({
+                                                currentSong: songWithUrl,
+                                                currentIndex: nextIndex,
+                                                isPlaying: true,
+                                                seekTime: 0,
+                                                history: newHistory
+                                            });
+                                            get().addToLastPlayed(songWithUrl);
+                                            return;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error("Failed to auto-fetch suggestions", e);
+                                }
+                            }
+
+                            // If auto and no suggestions, stop
+                            if (auto) {
+                                set({ isPlaying: false });
+                                return;
+                            }
+                            // Loop back to start if manual next and no suggestions found
+                            nextIndex = 0;
+                        } else {
+                            // Repeat All
+                            nextIndex = 0;
                         }
-                        // Loop back to start (Repeat All or Manual Next)
-                        nextIndex = 0;
                     }
                 }
 
-                const nextSong = queue[nextIndex];
-                const audioUrl = getAudioUrl(nextSong);
-                const songWithUrl = { ...nextSong, url: audioUrl };
+                if (queue.length > 0) {
+                    const nextSong = queue[nextIndex];
+                    const audioUrl = getAudioUrl(nextSong);
+                    const songWithUrl = { ...nextSong, url: audioUrl };
 
-                set({
-                    currentSong: songWithUrl,
-                    currentIndex: nextIndex,
-                    isPlaying: true,
-                    seekTime: 0
-                });
-                get().addToLastPlayed(songWithUrl);
+                    const newHistory = currentSong ? [...history, currentSong] : history;
+
+                    set({
+                        currentSong: songWithUrl,
+                        currentIndex: nextIndex,
+                        isPlaying: true,
+                        seekTime: 0,
+                        history: newHistory
+                    });
+                    get().addToLastPlayed(songWithUrl);
+                }
             },
 
             playPrevious: () => {
-                const { queue, currentIndex, isShuffle } = get();
+                const { queue, currentIndex, isShuffle, history } = get();
+
+                // 1. Priority: History (The "Back" button behavior)
+                if (history.length > 0) {
+                    const prevSong = history[history.length - 1]; // Get last
+                    const newHistory = history.slice(0, -1); // Remove last
+
+                    const audioUrl = getAudioUrl(prevSong);
+                    const songWithUrl = { ...prevSong, url: audioUrl };
+
+                    // Sync Index if in current queue
+                    const idx = queue.findIndex(s => s.id === prevSong.id);
+
+                    set({
+                        currentSong: songWithUrl,
+                        currentIndex: idx !== -1 ? idx : -1, // -1 means orphaned song
+                        isPlaying: true,
+                        seekTime: 0,
+                        history: newHistory
+                    });
+                    get().addToLastPlayed(songWithUrl);
+                    return;
+                }
 
                 if (queue.length === 0) return;
 
-                // If shuffle is on, Previous behavior is debated, but often people expect History. 
-                // We don't have play history stack yet (except lastPlayed which is for UI).
-                // For simplicity, Previous in Shuffle -> Go to random or previous index?
-                // Standard behavior: Previous goes to previous index in list, ignoring shuffle, OR relies on history.
-                // Let's stick to simple index decrement for now, unless user asks for history.
-
+                // 2. Fallback: Queue Navigation
                 let prevIndex = currentIndex - 1;
 
                 if (prevIndex < 0) {
@@ -197,6 +270,8 @@ export const useMusicStore = create<MusicState>()(
                 const prevSong = queue[prevIndex];
                 const audioUrl = getAudioUrl(prevSong);
                 const songWithUrl = { ...prevSong, url: audioUrl };
+
+                // Note: We don't push current to history on Prev (it's a Back action)
 
                 set({
                     currentSong: songWithUrl,
@@ -220,7 +295,8 @@ export const useMusicStore = create<MusicState>()(
             partialize: (state) => ({
                 lastPlayed: state.lastPlayed.filter(s => s.type !== 'local' && !s.file),
                 isShuffle: state.isShuffle,
-                repeatMode: state.repeatMode
+                repeatMode: state.repeatMode,
+                history: state.history.slice(-50), // Persist last 50 songs of history
             }),
         }
     )
