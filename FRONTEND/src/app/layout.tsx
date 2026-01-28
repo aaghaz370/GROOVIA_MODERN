@@ -24,12 +24,12 @@ export default function RootLayout({
         <Sidebar />
 
         {/* Main Content Area */}
-        <main className="flex-1 h-full overflow-y-auto md:ml-64 relative pb-20 md:pb-24 scroll-smooth bg-sidebar">
-          <div className="relative z-10 p-4 md:p-8 min-h-full max-w-7xl mx-auto">
+        <main className="flex-1 h-full overflow-y-auto md:ml-64 relative scroll-smooth bg-sidebar">
+          <div className="relative z-10 p-4 md:p-8 min-h-full max-w-7xl mx-auto pb-20 md:pb-0">
             {children}
-            {/* Footer - Appears on all pages */}
-            <Footer />
           </div>
+          {/* Footer - Full width, appears on all pages */}
+          <Footer />
         </main>
 
         {/* Mobile Navigation */}
