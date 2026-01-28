@@ -106,22 +106,27 @@ const MiniPlayer = () => {
 
     // Sync playing state
     useEffect(() => {
-        if (audioRef.current) {
-            // Need to check if audioUrl is valid and component is mounted
-            if (isPlayingStore && audioUrl) {
+        if (audioRef.current && audioUrl) {
+            if (isPlayingStore) {
                 const playPromise = audioRef.current.play();
                 if (playPromise !== undefined) {
-                    playPromise.catch(err => {
-                        // Auto-play policy or other error
-                        console.error('Play error:', err);
-                        // Don't set error true immediately for autoplay blocks
-                        if (err.name !== 'NotAllowedError') {
-                            setError(true);
-                        }
-                    });
+                    playPromise
+                        .then(() => {
+                            // Playback started successfully
+                            setIsPlaying(true);
+                        })
+                        .catch(err => {
+                            console.error('Play error:', err);
+                            // Sync state back if play failed
+                            if (err.name !== 'NotAllowedError') {
+                                setError(true);
+                                useMusicStore.getState().pauseSong();
+                            }
+                        });
                 }
             } else {
                 audioRef.current.pause();
+                setIsPlaying(false);
             }
         }
     }, [isPlayingStore, audioUrl]);
@@ -133,8 +138,12 @@ const MiniPlayer = () => {
     }, [volume]);
 
     const togglePlay = () => {
+        if (!audioRef.current || !audioUrl) return;
+
         const store = useMusicStore.getState();
-        if (isPlaying) {
+        const currentPlayingState = store.isPlaying;
+
+        if (currentPlayingState) {
             store.pauseSong();
         } else {
             store.resumeSong();
@@ -208,7 +217,7 @@ const MiniPlayer = () => {
                                 className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-black transition-transform active:scale-95 shadow-lg"
                                 disabled={error || !audioUrl}
                             >
-                                {isPlaying ? (
+                                {isPlayingStore ? (
                                     <BiPause size={22} />
                                 ) : (
                                     <BiPlay size={24} className="ml-0.5" />
@@ -321,7 +330,7 @@ const MiniPlayer = () => {
                                     className="p-2 rounded-full bg-white hover:scale-105 transition-transform"
                                     disabled={error || !audioUrl}
                                 >
-                                    {isPlaying ? (
+                                    {isPlayingStore ? (
                                         <BiPause size={24} className="text-black" />
                                     ) : (
                                         <BiPlay size={24} className="text-black ml-0.5" />
