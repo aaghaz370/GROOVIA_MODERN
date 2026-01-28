@@ -124,7 +124,7 @@ export default function DMCAPage() {
                     </p>
                     <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
                         <p className="text-purple-400 font-mono text-lg">
-                            dmca@groovia.site
+                            univora.site
                         </p>
                     </div>
                     <p className="text-sm text-gray-400">
