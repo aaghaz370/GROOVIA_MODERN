@@ -26,6 +26,7 @@ import {
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
 import { IoShareOutline } from 'react-icons/io5';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 
 export default function PlayerPage() {
     const router = useRouter();
@@ -586,7 +587,7 @@ export default function PlayerPage() {
                                         >
                                             <div className="relative w-12 h-12 rounded overflow-hidden flex-shrink-0">
                                                 <SongImage
-                                                    src={song.image?.[1]?.url || song.image?.[0]?.url}
+                                                    src={getImageUrl(song.image)}
                                                     alt={song.name}
                                                     fill
                                                     className="object-cover"
@@ -631,7 +632,7 @@ export default function PlayerPage() {
                                                 className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer"
                                             >
                                                 <div className="relative w-12 h-12 rounded overflow-hidden flex-shrink-0">
-                                                    <SongImage src={song.image?.[1]?.url || song.image?.[0]?.url} alt={song.name} fill className="object-cover" sizes="48px" />
+                                                    <SongImage src={getImageUrl(song.image)} alt={song.name} fill className="object-cover" sizes="48px" />
                                                 </div>
                                                 <div className="flex-1">
                                                     <h3 className="text-white font-medium text-sm line-clamp-1">{he.decode(song.name)}</h3>
@@ -668,7 +669,7 @@ export default function PlayerPage() {
                     <div className="w-[45%] flex flex-col">
                         <div className="relative w-full aspect-square rounded-xl overflow-hidden shadow-2xl mb-6">
                             <SongImage
-                                src={currentSong.image?.[2]?.url || currentSong.image?.[0]?.url}
+                                src={getImageUrl(currentSong.image)}
                                 alt={currentSong.name}
                                 fill
                                 className="object-cover"
@@ -765,7 +766,7 @@ export default function PlayerPage() {
                                                 >
                                                     <div className="relative w-14 h-14 rounded overflow-hidden flex-shrink-0">
                                                         <SongImage
-                                                            src={song.image?.[1]?.url || song.image?.[0]?.url}
+                                                            src={getImageUrl(song.image)}
                                                             alt={song.name}
                                                             fill
                                                             className="object-cover"
@@ -812,7 +813,7 @@ export default function PlayerPage() {
                                                         className="flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 cursor-pointer"
                                                     >
                                                         <div className="relative w-14 h-14 rounded overflow-hidden flex-shrink-0">
-                                                            <SongImage src={song.image?.[1]?.url || song.image?.[0]?.url} alt={song.name} fill className="object-cover" sizes="56px" fallbackSize={28} />
+                                                            <SongImage src={getImageUrl(song.image)} alt={song.name} fill className="object-cover" sizes="56px" fallbackSize={28} />
                                                         </div>
                                                         <div className="flex-1">
                                                             <h3 className="text-white font-medium text-sm line-clamp-1">{he.decode(song.name)}</h3>

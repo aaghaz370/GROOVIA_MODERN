@@ -5,6 +5,7 @@ import { useMusicStore } from '@/store/useMusicStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { api } from '@/lib/api';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl as getSafeImageUrl } from '@/lib/imageUtils';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import he from 'he';
@@ -156,11 +157,7 @@ const MiniPlayer = () => {
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    // Helper to get image URL safely
-    const getImageUrl = () => {
-        return currentSong?.image?.[1]?.url || currentSong?.image?.[0]?.url || null;
-    };
-    const imageUrl = getImageUrl();
+    const imageUrl = getSafeImageUrl(currentSong?.image);
 
     // Hide mobile mini-player on /player route
     const isPlayerPage = pathname === '/player';

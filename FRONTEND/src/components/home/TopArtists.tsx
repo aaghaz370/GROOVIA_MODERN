@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import { topArtists } from '@/data/topArtists';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import Link from 'next/link';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import { BiPlay } from 'react-icons/bi';
@@ -60,7 +61,7 @@ const TopArtists = () => {
                             {/* Circular Image */}
                             <div className="relative w-[140px] h-[140px] md:w-[160px] md:h-[160px] rounded-full overflow-hidden mb-3">
                                 <SongImage
-                                    src={artist.url}
+                                    src={getImageUrl(artist.url)}
                                     alt={artist.name}
                                     fill
                                     className="object-cover"

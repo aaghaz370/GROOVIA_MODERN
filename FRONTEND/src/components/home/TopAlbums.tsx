@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import Link from 'next/link';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
@@ -110,7 +111,7 @@ const TopAlbums = () => {
                             {/* Album Cover */}
                             <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-4">
                                 <SongImage
-                                    src={album.image?.[2]?.url || album.image?.[1]?.url || album.image?.[0]?.url}
+                                    src={getImageUrl(album.image)}
                                     alt={he.decode(album.name)}
                                     fill
                                     className="object-cover group-hover:scale-105 transition-transform"

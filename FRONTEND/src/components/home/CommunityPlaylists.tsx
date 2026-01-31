@@ -5,6 +5,7 @@ import { fetchPlaylistById } from '@/lib/api';
 import { communityPlaylists } from '@/data/communityPlaylists';
 import { useMusicStore } from '@/store/useMusicStore';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import he from 'he';
 import { BiPlay } from 'react-icons/bi';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
@@ -38,7 +39,7 @@ const CommunityPlaylists = () => {
                         const response = await fetchPlaylistById(playlist.id.toString(), 4);
                         return {
                             ...playlist,
-                            image: response.data?.image?.[2]?.url || response.data?.image?.[1]?.url,
+                            image: getImageUrl(response.data?.image) || undefined,
                             songs: response.data?.songs?.slice(0, 4) || []
                         };
                     } catch (error) {
@@ -155,7 +156,7 @@ const CommunityPlaylists = () => {
                                     {/* Mini Album Art */}
                                     <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0">
                                         <SongImage
-                                            src={song.image?.[1]?.url || song.image?.[0]?.url}
+                                            src={getImageUrl(song.image)}
                                             alt={he.decode(song.name)}
                                             fill
                                             className="object-cover"

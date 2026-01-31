@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchPlaylistById } from '@/lib/api';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import he from 'he';
 
 import { useMusicStore } from '@/store/useMusicStore';
@@ -71,7 +72,7 @@ const SpeedDial = () => {
                         className="relative aspect-square rounded-xl overflow-hidden cursor-pointer group border-2 border-transparent hover:border-white transition-all duration-200"
                     >
                         <SongImage
-                            src={song.image?.[2]?.url || song.image?.[0]?.url}
+                            src={getImageUrl(song.image)}
                             alt={he.decode(song.name)}
                             fill
                             className="object-cover"

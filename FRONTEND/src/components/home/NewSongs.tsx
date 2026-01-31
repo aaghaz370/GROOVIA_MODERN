@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchPlaylistById } from '@/lib/api';
 import { useMusicStore } from '@/store/useMusicStore';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import he from 'he';
 import { BiPlay } from 'react-icons/bi';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
@@ -98,7 +99,7 @@ const NewSongs = () => {
                             {/* Large Album Art */}
                             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden mb-3">
                                 <SongImage
-                                    src={song.image?.[song.image?.length - 1]?.url || song.image?.[0]?.url}
+                                    src={getImageUrl(song.image)}
                                     alt={he.decode(song.name)}
                                     fill
                                     className="object-cover"
@@ -174,7 +175,7 @@ const NewSongs = () => {
                                 {/* Album Art */}
                                 <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 group-hover:shadow-[0_0_20px_rgba(124,58,237,0.3)] transition-shadow">
                                     <SongImage
-                                        src={song.image?.[song.image?.length - 1]?.url || song.image?.[0]?.url}
+                                        src={getImageUrl(song.image)}
                                         alt={he.decode(song.name)}
                                         fill
                                         className="object-cover"

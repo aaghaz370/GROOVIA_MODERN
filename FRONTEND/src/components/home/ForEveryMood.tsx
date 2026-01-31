@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import { moodPlaylists } from '@/data/moodPlaylists';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import Link from 'next/link';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
@@ -59,7 +60,7 @@ const ForEveryMood = () => {
                         {/* Large Portrait Card */}
                         <div className="relative aspect-[3/4] rounded-2xl overflow-hidden mb-3">
                             <SongImage
-                                src={playlist.image}
+                                src={getImageUrl(playlist.image)}
                                 alt={he.decode(playlist.name)}
                                 fill
                                 className="object-cover"
@@ -100,7 +101,7 @@ const ForEveryMood = () => {
                         {/* Large Portrait Card */}
                         <div className="relative aspect-[3/4] rounded-2xl overflow-hidden mb-3">
                             <SongImage
-                                src={playlist.image}
+                                src={getImageUrl(playlist.image)}
                                 alt={he.decode(playlist.name)}
                                 fill
                                 className="object-cover"

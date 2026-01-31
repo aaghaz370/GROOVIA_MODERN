@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { fetchPlaylistById } from '@/lib/api';
 import { useMusicStore } from '@/store/useMusicStore';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import { BiPlay } from 'react-icons/bi';
 import he from 'he';
 
@@ -76,7 +77,7 @@ const HeroBanner = () => {
             {/* Background Image with Smooth Transition */}
             <div className="absolute inset-0 transition-opacity duration-1000 ease-in-out">
                 <SongImage
-                    src={currentSong.image?.[currentSong.image?.length - 1]?.url}
+                    src={getImageUrl(currentSong.image)}
                     alt={he.decode(currentSong.name)}
                     fill
                     className="object-cover"

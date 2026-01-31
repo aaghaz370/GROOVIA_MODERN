@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import SongImage from '@/components/ui/SongImage';
+import { getImageUrl } from '@/lib/imageUtils';
 import Link from 'next/link';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
@@ -108,7 +109,7 @@ const TopPlaylists = () => {
                             {/* Square Album Art */}
                             <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-3 bg-zinc-900">
                                 <SongImage
-                                    src={playlist.image?.[2]?.url || playlist.image?.[1]?.url || playlist.image?.[0]?.url}
+                                    src={getImageUrl(playlist.image)}
                                     alt={he.decode(playlist.name)}
                                     fill
                                     className="object-cover transition-transform group-hover:scale-105"
