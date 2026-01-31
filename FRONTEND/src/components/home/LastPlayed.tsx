@@ -46,7 +46,7 @@ const LastPlayed = () => {
 
                 {/* Horizontal Scrolling Container with Grid */}
                 <div className="overflow-x-scroll scrollbar-hide -mx-4 px-4 scroll-smooth">
-                    <div className="inline-grid grid-rows-4 grid-flow-col gap-2 auto-cols-[80%]">
+                    <div className="inline-grid grid-rows-4 grid-flow-col gap-2 auto-cols-[90%] md:auto-cols-[45%]">
                         {mobileSongs.map((song) => (
                             <div
                                 key={song.id}
@@ -56,7 +56,7 @@ const LastPlayed = () => {
                                 {/* Album Art */}
                                 <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
                                     <SongImage
-                                        src={getImageUrl(song.image)}
+                                        src={getImageUrl(song.image, 'medium')}
                                         alt={he.decode(song.name)}
                                         fill
                                         className="object-cover"
@@ -123,7 +123,7 @@ const LastPlayed = () => {
                     ref={scrollRef}
                     className="overflow-x-auto scrollbar-hide scroll-smooth"
                 >
-                    <div className="inline-grid grid-rows-4 grid-flow-col gap-2 auto-cols-[110%]">
+                    <div className="inline-grid grid-rows-4 grid-flow-col gap-2 auto-cols-[32%]">
                         {desktopSongs.map((song) => (
                             <div
                                 key={song.id}
@@ -133,7 +133,7 @@ const LastPlayed = () => {
                                 {/* Album Art */}
                                 <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
                                     <SongImage
-                                        src={getImageUrl(song.image)}
+                                        src={getImageUrl(song.image, 'medium')}
                                         alt={he.decode(song.name)}
                                         fill
                                         className="object-cover"
