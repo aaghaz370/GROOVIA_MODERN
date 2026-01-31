@@ -39,12 +39,9 @@ export default function PlayerPage() {
     // Details Tab State
     const [fullSongDetails, setFullSongDetails] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
-    const [featuredPlaylists, setFeaturedPlaylists] = useState<any[]>([]);
-
     // Scroll refs for carousels
     const artistsScrollRef = useRef<HTMLDivElement>(null);
     const starringScrollRef = useRef<HTMLDivElement>(null);
-    const playlistsScrollRef = useRef<HTMLDivElement>(null);
 
     const scrollCarousel = (ref: React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
         if (ref.current) {
@@ -75,29 +72,30 @@ export default function PlayerPage() {
 
     const filters = ['All', 'Familiar', 'Discover', 'Popular', 'Deep cuts'];
 
-    // Fetch related songs when current song changes or tab switches to related
+    // Fetch related songs and Details when current song changes
     useEffect(() => {
-        if (activeTab === 'related' && currentSong?.id) {
+        if (!currentSong?.id) return;
+
+        if (activeTab === 'related') {
             fetchRelatedSongs();
         }
-        if (activeTab === 'details' && currentSong?.id) {
-            fetchSongDetails();
-        }
+
+        // Always pre-fetch details for smoother experience
+        fetchSongDetails();
     }, [activeTab, currentSong?.id]);
 
     const fetchSongDetails = async () => {
         if (!currentSong?.id) return;
+        // Don't re-fetch if we already have data for this song
+        if (fullSongDetails?.id === currentSong.id) return;
+
         setLoadingDetails(true);
         try {
             // Fetch Song Details
-            const songRes = await api.get('/songs', { params: { id: currentSong.id } });
+            const songRes = await api.get(`/songs/${currentSong.id}`);
             if (songRes.data?.data?.[0]) {
                 setFullSongDetails(songRes.data.data[0]);
             }
-
-            // Fetch Featured Playlists (Approximation)
-            const playlistRes = await api.get('/search/playlists', { params: { query: currentSong.name, limit: 10 } });
-            setFeaturedPlaylists(playlistRes.data?.data?.results || []);
 
         } catch (error) {
             console.error('Error fetching details:', error);
@@ -305,6 +303,24 @@ export default function PlayerPage() {
             </div>
         );
     }
+
+    // Derived state for Details
+    const rawArtists = fullSongDetails?.artists?.all || fullSongDetails?.artists?.primary || [];
+    const getUniqueList = (list: any[]) => {
+        const seen = new Set();
+        return list.filter(item => {
+            const id = item.id;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+    };
+    const starringList = getUniqueList(rawArtists.filter((a: any) =>
+        ['starring', 'actor', 'actress', 'cast'].includes(a.role?.toLowerCase())
+    ));
+    const musiciansList = getUniqueList(rawArtists.filter((a: any) =>
+        !['starring', 'actor', 'actress', 'cast'].includes(a.role?.toLowerCase())
+    ));
 
     return (
         <>
@@ -713,7 +729,7 @@ export default function PlayerPage() {
                                     <div>
                                         <h3 className="text-lg font-bold text-white mb-3">Artists</h3>
                                         <div className="flex overflow-x-auto scrollbar-hide gap-3 -mx-4 px-4 snap-x">
-                                            {(fullSongDetails.artists?.all || fullSongDetails.artists?.primary || []).filter((a: any) => a.role !== 'starring').map((artist: any) => (
+                                            {musiciansList.map((artist: any) => (
                                                 <Link key={artist.id} href={`/artist/${artist.id}`} className="flex-shrink-0 w-[45%] snap-start group">
                                                     <div className="relative w-full aspect-square rounded-full overflow-hidden mb-2 bg-zinc-800">
                                                         <SongImage src={getImageUrl(artist.image, 'medium')} alt={artist.name} fill className="object-cover" />
@@ -726,11 +742,11 @@ export default function PlayerPage() {
                                     </div>
 
                                     {/* Starring */}
-                                    {fullSongDetails.artists?.all?.some((a: any) => a.role === 'starring') && (
+                                    {starringList.length > 0 && (
                                         <div>
                                             <h3 className="text-lg font-bold text-white mb-3">Starring</h3>
                                             <div className="flex overflow-x-auto scrollbar-hide gap-3 -mx-4 px-4 snap-x">
-                                                {fullSongDetails.artists.all.filter((a: any) => a.role === 'starring').map((artist: any) => (
+                                                {starringList.map((artist: any) => (
                                                     <div key={artist.id} className="flex-shrink-0 w-[45%] snap-start">
                                                         <div className="relative w-full aspect-square rounded-full overflow-hidden mb-2 bg-zinc-800">
                                                             <SongImage src={getImageUrl(artist.image, 'medium')} alt={artist.name} fill className="object-cover" />
@@ -747,31 +763,16 @@ export default function PlayerPage() {
                                     {fullSongDetails.album && (
                                         <div>
                                             <h3 className="text-lg font-bold text-white mb-3">From Album</h3>
-                                            <div className="w-[45%]">
+                                            <Link href={`/album/${fullSongDetails.album.id}`} className="block w-[45%]">
                                                 <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800">
                                                     <SongImage src={getImageUrl(fullSongDetails.image, 'medium')} alt={fullSongDetails.album.name} fill className="object-cover" />
                                                 </div>
                                                 <p className="text-white text-sm font-bold line-clamp-1">{fullSongDetails.album.name}</p>
-                                            </div>
+                                            </Link>
                                         </div>
                                     )}
 
-                                    {/* Playlists */}
-                                    {featuredPlaylists.length > 0 && (
-                                        <div>
-                                            <h3 className="text-lg font-bold text-white mb-3">Featured In Playlist</h3>
-                                            <div className="flex overflow-x-auto scrollbar-hide gap-3 -mx-4 px-4 snap-x">
-                                                {featuredPlaylists.map((playlist: any) => (
-                                                    <Link key={playlist.id} href={`/playlist/${playlist.id}`} className="flex-shrink-0 w-[45%] snap-start">
-                                                        <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-2 bg-zinc-800">
-                                                            <SongImage src={getImageUrl(playlist.image, 'medium')} alt={playlist.name} fill className="object-cover" />
-                                                        </div>
-                                                        <p className="text-white text-sm font-medium line-clamp-1">{playlist.name}</p>
-                                                    </Link>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* Playlists - Removed as requested */}
                                 </>
                             ) : null}
                         </div>
@@ -987,10 +988,10 @@ export default function PlayerPage() {
                                                     </button>
 
                                                     <div ref={artistsScrollRef} className="flex overflow-x-auto scrollbar-hide gap-6 scroll-smooth">
-                                                        {(fullSongDetails.artists?.all || fullSongDetails.artists?.primary || []).filter((a: any) => a.role !== 'starring').map((artist: any) => (
+                                                        {musiciansList.map((artist: any) => (
                                                             <Link key={artist.id} href={`/artist/${artist.id}`} className="flex-shrink-0 w-[140px] group text-center">
                                                                 <div className="relative w-full aspect-square rounded-full overflow-hidden mb-3 bg-zinc-800 shadow-lg group-hover:scale-105 transition-transform">
-                                                                    <SongImage src={getImageUrl(artist.image, '500x500')} alt={artist.name} fill className="object-cover" />
+                                                                    <SongImage src={getImageUrl(artist.image, 'medium')} alt={artist.name} fill className="object-cover" />
                                                                 </div>
                                                                 <p className="text-white text-base font-bold line-clamp-1 group-hover:text-primary transition-colors">{artist.name}</p>
                                                                 <p className="text-gray-400 text-sm capitalize">{artist.role}</p>
@@ -1001,7 +1002,7 @@ export default function PlayerPage() {
                                             </div>
 
                                             {/* Starring (Desktop) */}
-                                            {fullSongDetails.artists?.all?.some((a: any) => a.role === 'starring') && (
+                                            {starringList.length > 0 && (
                                                 <div>
                                                     <h3 className="text-2xl font-bold text-white mb-4">Starring</h3>
                                                     <div className="relative group/carousel">
@@ -1013,10 +1014,10 @@ export default function PlayerPage() {
                                                         </button>
 
                                                         <div ref={starringScrollRef} className="flex overflow-x-auto scrollbar-hide gap-6 scroll-smooth">
-                                                            {fullSongDetails.artists.all.filter((a: any) => a.role === 'starring').map((artist: any) => (
+                                                            {starringList.map((artist: any) => (
                                                                 <div key={artist.id} className="flex-shrink-0 w-[140px] text-center">
                                                                     <div className="relative w-full aspect-square rounded-full overflow-hidden mb-3 bg-zinc-800 shadow-lg">
-                                                                        <SongImage src={getImageUrl(artist.image, '500x500')} alt={artist.name} fill className="object-cover" />
+                                                                        <SongImage src={getImageUrl(artist.image, 'medium')} alt={artist.name} fill className="object-cover" />
                                                                     </div>
                                                                     <p className="text-white text-base font-bold line-clamp-1">{artist.name}</p>
                                                                     <p className="text-gray-400 text-sm capitalize">{artist.role}</p>
@@ -1031,40 +1032,16 @@ export default function PlayerPage() {
                                             {fullSongDetails.album && (
                                                 <div>
                                                     <h3 className="text-2xl font-bold text-white mb-4">From Album</h3>
-                                                    <div className="w-[180px]">
+                                                    <Link href={`/album/${fullSongDetails.album.id}`} className="block w-[180px]">
                                                         <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-3 bg-zinc-800 shadow-lg hover:scale-105 transition-transform">
                                                             <SongImage src={getImageUrl(fullSongDetails.image, '500x500')} alt={fullSongDetails.album.name} fill className="object-cover" />
                                                         </div>
                                                         <p className="text-white text-lg font-bold line-clamp-1">{fullSongDetails.album.name}</p>
-                                                    </div>
+                                                    </Link>
                                                 </div>
                                             )}
 
-                                            {/* Playlists (Desktop) */}
-                                            {featuredPlaylists.length > 0 && (
-                                                <div>
-                                                    <h3 className="text-2xl font-bold text-white mb-4">Featured In Playlist</h3>
-                                                    <div className="relative group/carousel">
-                                                        <button onClick={() => scrollCarousel(playlistsScrollRef, 'left')} className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
-                                                            <IoChevronBack size={24} className="text-white" />
-                                                        </button>
-                                                        <button onClick={() => scrollCarousel(playlistsScrollRef, 'right')} className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
-                                                            <IoChevronForward size={24} className="text-white" />
-                                                        </button>
-
-                                                        <div ref={playlistsScrollRef} className="flex overflow-x-auto scrollbar-hide gap-6 scroll-smooth">
-                                                            {featuredPlaylists.map((playlist: any) => (
-                                                                <Link key={playlist.id} href={`/playlist/${playlist.id}`} className="flex-shrink-0 w-[180px] group">
-                                                                    <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-zinc-800 shadow-lg group-hover:scale-105 transition-transform">
-                                                                        <SongImage src={getImageUrl(playlist.image, 'medium')} alt={playlist.name} fill className="object-cover" />
-                                                                    </div>
-                                                                    <p className="text-white text-base font-bold line-clamp-1 group-hover:text-primary transition-colors">{playlist.name}</p>
-                                                                </Link>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
+                                            {/* Playlists - Removed as requested */}
                                         </>
                                     ) : null}
                                 </div>
