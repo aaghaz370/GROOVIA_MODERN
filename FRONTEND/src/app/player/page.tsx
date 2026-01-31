@@ -24,17 +24,34 @@ import {
     BiListPlus,
 } from 'react-icons/bi';
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
-import { IoShareOutline } from 'react-icons/io5';
+import { IoShareOutline, IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import SongImage from '@/components/ui/SongImage';
 import { getImageUrl } from '@/lib/imageUtils';
 
 export default function PlayerPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<'related' | 'upnext'>('related');
+    const [activeTab, setActiveTab] = useState<'related' | 'upnext' | 'details'>('related');
     // Removed local time/duration state to use global store
     const [selectedFilter, setSelectedFilter] = useState('All');
     const [relatedSongs, setRelatedSongs] = useState<any[]>([]);
     const [loadingRelated, setLoadingRelated] = useState(false);
+
+    // Details Tab State
+    const [fullSongDetails, setFullSongDetails] = useState<any>(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [featuredPlaylists, setFeaturedPlaylists] = useState<any[]>([]);
+
+    // Scroll refs for carousels
+    const artistsScrollRef = useRef<HTMLDivElement>(null);
+    const starringScrollRef = useRef<HTMLDivElement>(null);
+    const playlistsScrollRef = useRef<HTMLDivElement>(null);
+
+    const scrollCarousel = (ref: React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
+        if (ref.current) {
+            const scrollAmount = 600;
+            ref.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+        }
+    };
 
     // Removed audioRef - using global MiniPlayer
     const currentSong = useMusicStore((state) => state.currentSong);
@@ -63,7 +80,31 @@ export default function PlayerPage() {
         if (activeTab === 'related' && currentSong?.id) {
             fetchRelatedSongs();
         }
+        if (activeTab === 'details' && currentSong?.id) {
+            fetchSongDetails();
+        }
     }, [activeTab, currentSong?.id]);
+
+    const fetchSongDetails = async () => {
+        if (!currentSong?.id) return;
+        setLoadingDetails(true);
+        try {
+            // Fetch Song Details
+            const songRes = await api.get('/songs', { params: { id: currentSong.id } });
+            if (songRes.data?.data?.[0]) {
+                setFullSongDetails(songRes.data.data[0]);
+            }
+
+            // Fetch Featured Playlists (Approximation)
+            const playlistRes = await api.get('/search/playlists', { params: { query: currentSong.name, limit: 10 } });
+            setFeaturedPlaylists(playlistRes.data?.data?.results || []);
+
+        } catch (error) {
+            console.error('Error fetching details:', error);
+        } finally {
+            setLoadingDetails(false);
+        }
+    };
 
     const [showMenu, setShowMenu] = useState(false);
     const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
@@ -568,6 +609,15 @@ export default function PlayerPage() {
                     >
                         UP NEXT
                     </button>
+                    <button
+                        onClick={() => setActiveTab('details')}
+                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'details'
+                            ? 'text-white border-b-2 border-white'
+                            : 'text-gray-400'
+                            }`}
+                    >
+                        DETAILS
+                    </button>
                 </div>
 
                 {/* Tab Content */}
@@ -648,6 +698,82 @@ export default function PlayerPage() {
                                     <p className="text-gray-400 text-center py-8">No suggestions available</p>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'details' && (
+                        <div className="p-4 space-y-8 pb-24">
+                            {loadingDetails ? (
+                                <div className="text-center py-12">
+                                    <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                                </div>
+                            ) : fullSongDetails ? (
+                                <>
+                                    {/* Artists */}
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white mb-3">Artists</h3>
+                                        <div className="flex overflow-x-auto scrollbar-hide gap-3 -mx-4 px-4 snap-x">
+                                            {(fullSongDetails.artists?.all || fullSongDetails.artists?.primary || []).filter((a: any) => a.role !== 'starring').map((artist: any) => (
+                                                <Link key={artist.id} href={`/artist/${artist.id}`} className="flex-shrink-0 w-[45%] snap-start group">
+                                                    <div className="relative w-full aspect-square rounded-full overflow-hidden mb-2 bg-zinc-800">
+                                                        <SongImage src={getImageUrl(artist.image, 'medium')} alt={artist.name} fill className="object-cover" />
+                                                    </div>
+                                                    <p className="text-white text-sm font-medium text-center line-clamp-1 group-hover:underline">{artist.name}</p>
+                                                    <p className="text-gray-400 text-xs text-center capitalize">{artist.role}</p>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Starring */}
+                                    {fullSongDetails.artists?.all?.some((a: any) => a.role === 'starring') && (
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white mb-3">Starring</h3>
+                                            <div className="flex overflow-x-auto scrollbar-hide gap-3 -mx-4 px-4 snap-x">
+                                                {fullSongDetails.artists.all.filter((a: any) => a.role === 'starring').map((artist: any) => (
+                                                    <div key={artist.id} className="flex-shrink-0 w-[45%] snap-start">
+                                                        <div className="relative w-full aspect-square rounded-full overflow-hidden mb-2 bg-zinc-800">
+                                                            <SongImage src={getImageUrl(artist.image, 'medium')} alt={artist.name} fill className="object-cover" />
+                                                        </div>
+                                                        <p className="text-white text-sm font-medium text-center line-clamp-1">{artist.name}</p>
+                                                        <p className="text-gray-400 text-xs text-center capitalize">{artist.role}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Album */}
+                                    {fullSongDetails.album && (
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white mb-3">From Album</h3>
+                                            <div className="w-[45%]">
+                                                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800">
+                                                    <SongImage src={getImageUrl(fullSongDetails.image, 'medium')} alt={fullSongDetails.album.name} fill className="object-cover" />
+                                                </div>
+                                                <p className="text-white text-sm font-bold line-clamp-1">{fullSongDetails.album.name}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Playlists */}
+                                    {featuredPlaylists.length > 0 && (
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white mb-3">Featured In Playlist</h3>
+                                            <div className="flex overflow-x-auto scrollbar-hide gap-3 -mx-4 px-4 snap-x">
+                                                {featuredPlaylists.map((playlist: any) => (
+                                                    <Link key={playlist.id} href={`/playlist/${playlist.id}`} className="flex-shrink-0 w-[45%] snap-start">
+                                                        <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-2 bg-zinc-800">
+                                                            <SongImage src={getImageUrl(playlist.image, 'medium')} alt={playlist.name} fill className="object-cover" />
+                                                        </div>
+                                                        <p className="text-white text-sm font-medium line-clamp-1">{playlist.name}</p>
+                                                    </Link>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            ) : null}
                         </div>
                     )}
                 </div>
@@ -747,6 +873,15 @@ export default function PlayerPage() {
                             >
                                 UP NEXT
                             </button>
+                            <button
+                                onClick={() => setActiveTab('details')}
+                                className={`px-6 py-3 text-sm font-medium ${activeTab === 'details'
+                                    ? 'text-white border-b-2 border-white'
+                                    : 'text-gray-400'
+                                    }`}
+                            >
+                                DETAILS
+                            </button>
                         </div>
 
                         {/* Tab Content */}
@@ -829,6 +964,109 @@ export default function PlayerPage() {
                                             <p className="text-gray-400 text-center py-12">No suggestions available</p>
                                         )}
                                     </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'details' && (
+                                <div className="p-6 space-y-8">
+                                    {loadingDetails ? (
+                                        <div className="text-center py-12">
+                                            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+                                        </div>
+                                    ) : fullSongDetails ? (
+                                        <>
+                                            {/* Artists (Desktop) */}
+                                            <div>
+                                                <h3 className="text-2xl font-bold text-white mb-4">Artists</h3>
+                                                <div className="relative group/carousel">
+                                                    <button onClick={() => scrollCarousel(artistsScrollRef, 'left')} className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
+                                                        <IoChevronBack size={24} className="text-white" />
+                                                    </button>
+                                                    <button onClick={() => scrollCarousel(artistsScrollRef, 'right')} className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
+                                                        <IoChevronForward size={24} className="text-white" />
+                                                    </button>
+
+                                                    <div ref={artistsScrollRef} className="flex overflow-x-auto scrollbar-hide gap-6 scroll-smooth">
+                                                        {(fullSongDetails.artists?.all || fullSongDetails.artists?.primary || []).filter((a: any) => a.role !== 'starring').map((artist: any) => (
+                                                            <Link key={artist.id} href={`/artist/${artist.id}`} className="flex-shrink-0 w-[140px] group text-center">
+                                                                <div className="relative w-full aspect-square rounded-full overflow-hidden mb-3 bg-zinc-800 shadow-lg group-hover:scale-105 transition-transform">
+                                                                    <SongImage src={getImageUrl(artist.image, '500x500')} alt={artist.name} fill className="object-cover" />
+                                                                </div>
+                                                                <p className="text-white text-base font-bold line-clamp-1 group-hover:text-primary transition-colors">{artist.name}</p>
+                                                                <p className="text-gray-400 text-sm capitalize">{artist.role}</p>
+                                                            </Link>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Starring (Desktop) */}
+                                            {fullSongDetails.artists?.all?.some((a: any) => a.role === 'starring') && (
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-white mb-4">Starring</h3>
+                                                    <div className="relative group/carousel">
+                                                        <button onClick={() => scrollCarousel(starringScrollRef, 'left')} className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
+                                                            <IoChevronBack size={24} className="text-white" />
+                                                        </button>
+                                                        <button onClick={() => scrollCarousel(starringScrollRef, 'right')} className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
+                                                            <IoChevronForward size={24} className="text-white" />
+                                                        </button>
+
+                                                        <div ref={starringScrollRef} className="flex overflow-x-auto scrollbar-hide gap-6 scroll-smooth">
+                                                            {fullSongDetails.artists.all.filter((a: any) => a.role === 'starring').map((artist: any) => (
+                                                                <div key={artist.id} className="flex-shrink-0 w-[140px] text-center">
+                                                                    <div className="relative w-full aspect-square rounded-full overflow-hidden mb-3 bg-zinc-800 shadow-lg">
+                                                                        <SongImage src={getImageUrl(artist.image, '500x500')} alt={artist.name} fill className="object-cover" />
+                                                                    </div>
+                                                                    <p className="text-white text-base font-bold line-clamp-1">{artist.name}</p>
+                                                                    <p className="text-gray-400 text-sm capitalize">{artist.role}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Album (Desktop) */}
+                                            {fullSongDetails.album && (
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-white mb-4">From Album</h3>
+                                                    <div className="w-[180px]">
+                                                        <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-3 bg-zinc-800 shadow-lg hover:scale-105 transition-transform">
+                                                            <SongImage src={getImageUrl(fullSongDetails.image, '500x500')} alt={fullSongDetails.album.name} fill className="object-cover" />
+                                                        </div>
+                                                        <p className="text-white text-lg font-bold line-clamp-1">{fullSongDetails.album.name}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Playlists (Desktop) */}
+                                            {featuredPlaylists.length > 0 && (
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-white mb-4">Featured In Playlist</h3>
+                                                    <div className="relative group/carousel">
+                                                        <button onClick={() => scrollCarousel(playlistsScrollRef, 'left')} className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
+                                                            <IoChevronBack size={24} className="text-white" />
+                                                        </button>
+                                                        <button onClick={() => scrollCarousel(playlistsScrollRef, 'right')} className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/80 border border-white/10 items-center justify-center rounded-full opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black">
+                                                            <IoChevronForward size={24} className="text-white" />
+                                                        </button>
+
+                                                        <div ref={playlistsScrollRef} className="flex overflow-x-auto scrollbar-hide gap-6 scroll-smooth">
+                                                            {featuredPlaylists.map((playlist: any) => (
+                                                                <Link key={playlist.id} href={`/playlist/${playlist.id}`} className="flex-shrink-0 w-[180px] group">
+                                                                    <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-zinc-800 shadow-lg group-hover:scale-105 transition-transform">
+                                                                        <SongImage src={getImageUrl(playlist.image, 'medium')} alt={playlist.name} fill className="object-cover" />
+                                                                    </div>
+                                                                    <p className="text-white text-base font-bold line-clamp-1 group-hover:text-primary transition-colors">{playlist.name}</p>
+                                                                </Link>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : null}
                                 </div>
                             )}
                         </div>
