@@ -54,6 +54,8 @@ export default function SongImage({
             className={className}
             sizes={sizes}
             priority={priority}
+            unoptimized={true}
+            referrerPolicy="no-referrer"
             onError={() => setError(true)}
         />
     );
