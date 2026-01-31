@@ -43,7 +43,7 @@ export default function PlayerPage() {
     const artistsScrollRef = useRef<HTMLDivElement>(null);
     const starringScrollRef = useRef<HTMLDivElement>(null);
 
-    const scrollCarousel = (ref: React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
+    const scrollCarousel = (ref: React.RefObject<HTMLDivElement | null>, direction: 'left' | 'right') => {
         if (ref.current) {
             const scrollAmount = 600;
             ref.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
