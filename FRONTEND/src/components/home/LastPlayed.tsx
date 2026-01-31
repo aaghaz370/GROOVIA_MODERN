@@ -55,7 +55,7 @@ const LastPlayed = () => {
                                 {/* Album Art */}
                                 <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
                                     <SongImage
-                                        src={song.image[1]?.url || song.image[0]?.url}
+                                        src={song.image?.[1]?.url || song.image?.[0]?.url}
                                         alt={he.decode(song.name)}
                                         fill
                                         className="object-cover"
@@ -132,7 +132,7 @@ const LastPlayed = () => {
                                 {/* Album Art */}
                                 <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
                                     <SongImage
-                                        src={song.image[2]?.url || song.image[1]?.url || song.image[0]?.url}
+                                        src={song.image?.[2]?.url || song.image?.[1]?.url || song.image?.[0]?.url}
                                         alt={he.decode(song.name)}
                                         fill
                                         className="object-cover"

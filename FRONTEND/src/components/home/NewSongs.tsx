@@ -98,7 +98,7 @@ const NewSongs = () => {
                             {/* Large Album Art */}
                             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden mb-3">
                                 <SongImage
-                                    src={song.image[song.image.length - 1]?.url}
+                                    src={song.image?.[song.image?.length - 1]?.url || song.image?.[0]?.url}
                                     alt={he.decode(song.name)}
                                     fill
                                     className="object-cover"
@@ -174,7 +174,7 @@ const NewSongs = () => {
                                 {/* Album Art */}
                                 <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 group-hover:shadow-[0_0_20px_rgba(124,58,237,0.3)] transition-shadow">
                                     <SongImage
-                                        src={song.image[song.image.length - 1]?.url}
+                                        src={song.image?.[song.image?.length - 1]?.url || song.image?.[0]?.url}
                                         alt={he.decode(song.name)}
                                         fill
                                         className="object-cover"

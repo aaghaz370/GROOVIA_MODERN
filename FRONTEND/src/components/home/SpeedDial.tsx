@@ -71,7 +71,7 @@ const SpeedDial = () => {
                         className="relative aspect-square rounded-xl overflow-hidden cursor-pointer group border-2 border-transparent hover:border-white transition-all duration-200"
                     >
                         <SongImage
-                            src={song.image[2]?.url || song.image[0]?.url}
+                            src={song.image?.[2]?.url || song.image?.[0]?.url}
                             alt={he.decode(song.name)}
                             fill
                             className="object-cover"

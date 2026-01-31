@@ -76,7 +76,7 @@ const HeroBanner = () => {
             {/* Background Image with Smooth Transition */}
             <div className="absolute inset-0 transition-opacity duration-1000 ease-in-out">
                 <SongImage
-                    src={currentSong.image[currentSong.image.length - 1]?.url}
+                    src={currentSong.image?.[currentSong.image?.length - 1]?.url}
                     alt={he.decode(currentSong.name)}
                     fill
                     className="object-cover"
