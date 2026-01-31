@@ -764,12 +764,13 @@ export default function PlayerPage() {
                                                     className="flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 cursor-pointer group"
                                                 >
                                                     <div className="relative w-14 h-14 rounded overflow-hidden flex-shrink-0">
-                                                        <Image
+                                                        <SongImage
                                                             src={song.image?.[1]?.url || song.image?.[0]?.url}
                                                             alt={song.name}
                                                             fill
                                                             className="object-cover"
                                                             sizes="56px"
+                                                            fallbackSize={28}
                                                         />
                                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                             <BiPlay size={24} className="text-white" />
@@ -811,7 +812,7 @@ export default function PlayerPage() {
                                                         className="flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 cursor-pointer"
                                                     >
                                                         <div className="relative w-14 h-14 rounded overflow-hidden flex-shrink-0">
-                                                            <Image src={song.image?.[1]?.url || song.image?.[0]?.url} alt={song.name} fill className="object-cover" sizes="56px" />
+                                                            <SongImage src={song.image?.[1]?.url || song.image?.[0]?.url} alt={song.name} fill className="object-cover" sizes="56px" fallbackSize={28} />
                                                         </div>
                                                         <div className="flex-1">
                                                             <h3 className="text-white font-medium text-sm line-clamp-1">{he.decode(song.name)}</h3>
