@@ -109,7 +109,7 @@ const TopPlaylists = () => {
                             {/* Square Album Art */}
                             <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-3 bg-zinc-900">
                                 <SongImage
-                                    src={getImageUrl(playlist.image)}
+                                    src={getImageUrl(playlist.image, 'medium')}
                                     alt={he.decode(playlist.name)}
                                     fill
                                     className="object-cover transition-transform group-hover:scale-105"

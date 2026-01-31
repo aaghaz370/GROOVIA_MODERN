@@ -111,7 +111,7 @@ const TopAlbums = () => {
                             {/* Album Cover */}
                             <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-4">
                                 <SongImage
-                                    src={getImageUrl(album.image)}
+                                    src={getImageUrl(album.image, 'medium')}
                                     alt={he.decode(album.name)}
                                     fill
                                     className="object-cover group-hover:scale-105 transition-transform"

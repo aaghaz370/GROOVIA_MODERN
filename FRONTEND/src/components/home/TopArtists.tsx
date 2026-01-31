@@ -61,7 +61,7 @@ const TopArtists = () => {
                             {/* Circular Image */}
                             <div className="relative w-[140px] h-[140px] md:w-[160px] md:h-[160px] rounded-full overflow-hidden mb-3">
                                 <SongImage
-                                    src={getImageUrl(artist.url)}
+                                    src={getImageUrl(artist.url, 'medium')}
                                     alt={artist.name}
                                     fill
                                     className="object-cover"

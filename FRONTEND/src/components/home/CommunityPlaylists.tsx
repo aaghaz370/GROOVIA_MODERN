@@ -156,7 +156,7 @@ const CommunityPlaylists = () => {
                                     {/* Mini Album Art */}
                                     <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0">
                                         <SongImage
-                                            src={getImageUrl(song.image)}
+                                            src={getImageUrl(song.image, 'medium')}
                                             alt={he.decode(song.name)}
                                             fill
                                             className="object-cover"
