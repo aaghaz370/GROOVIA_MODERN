@@ -24,8 +24,8 @@ export default function RootLayout({
         <Sidebar />
 
         {/* Main Content Area */}
-        <main className="flex-1 h-full overflow-y-auto md:ml-64 relative scroll-smooth bg-sidebar">
-          <div className="relative z-10 p-4 md:p-8 min-h-full max-w-7xl mx-auto pb-20 md:pb-0">
+        <main className="flex-1 h-full overflow-y-auto md:ml-64 relative scroll-smooth bg-sidebar flex flex-col">
+          <div className="relative z-10 p-4 md:p-8 flex-1 w-full max-w-7xl mx-auto pb-20 md:pb-0">
             {children}
           </div>
           {/* Footer - Full width, appears on all pages */}
