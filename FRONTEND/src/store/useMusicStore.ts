@@ -98,13 +98,26 @@ export const useMusicStore = create<MusicState>()(
                 // Find song index in queue
                 const index = queue.findIndex(s => s.id === song.id);
 
-                set({
-                    currentSong: songWithUrl,
-                    isPlaying: true,
-                    currentIndex: index >= 0 ? index : get().currentIndex,
-                    seekTime: 0,
-                    history: newHistory
-                });
+                if (index === -1) {
+                    // Song not in queue (e.g., clicked from Search/Top Songs)
+                    // Reset queue to this song to enable proper "Next" logic via Autoplay
+                    set({
+                        currentSong: songWithUrl,
+                        isPlaying: true,
+                        queue: [songWithUrl],
+                        currentIndex: 0,
+                        seekTime: 0,
+                        history: newHistory
+                    });
+                } else {
+                    set({
+                        currentSong: songWithUrl,
+                        isPlaying: true,
+                        currentIndex: index,
+                        seekTime: 0,
+                        history: newHistory
+                    });
+                }
                 get().addToLastPlayed(songWithUrl);
             },
 
@@ -168,12 +181,13 @@ export const useMusicStore = create<MusicState>()(
                             // Suggestion / Infinite Scroll Logic
                             if (currentSong) {
                                 try {
-                                    // Try to fetch related songs to append
                                     const res = await api.get(`/songs/${currentSong.id}/suggestions`);
                                     const suggestions = res.data?.data || [];
 
                                     if (suggestions.length > 0) {
-                                        const newQueue = [...queue, ...suggestions];
+                                        // Take top related song for infinite chain
+                                        const nextRelated = suggestions[0];
+                                        const newQueue = [...queue, nextRelated];
                                         set({ queue: newQueue });
 
                                         // Now we can play the next index (which is at the start of suggestions)
