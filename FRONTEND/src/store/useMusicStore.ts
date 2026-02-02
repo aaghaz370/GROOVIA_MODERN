@@ -17,6 +17,7 @@ interface Song {
         name: string;
     };
     file?: File; // For local files
+    youtubeId?: string; // For YouTube Embed
 }
 
 interface MusicState {

@@ -185,7 +185,7 @@ export default function PlaylistPage() {
                                 id: t.videoId,
                                 name: t.title,
                                 duration: String(durSec),
-                                image: t.thumbnails?.map((thumb: any) => ({ quality: 'high', url: thumb.url })) || [],
+                                image: t.thumbnails?.length ? t.thumbnails.map((thumb: any) => ({ quality: 'high', url: thumb.url })) : (ytData.thumbnails?.map((thumb: any) => ({ quality: 'high', url: thumb.url })) || []),
                                 artists: { primary: t.artists || [] },
                                 youtubeId: t.videoId, // For Embed Player
                                 downloadUrl: [{ quality: '320kbps', url: `http://localhost:8000/stream?videoId=${t.videoId}` }],
