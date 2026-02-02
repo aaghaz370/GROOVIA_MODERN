@@ -182,8 +182,27 @@ export const useMusicStore = create<MusicState>()(
                             // Suggestion / Infinite Scroll Logic
                             if (currentSong) {
                                 try {
-                                    const res = await api.get(`/songs/${currentSong.id}/suggestions`);
-                                    const suggestions = res.data?.data || [];
+                                    let suggestions: any[] = [];
+                                    if (currentSong.youtubeId) {
+                                        try {
+                                            const res = await fetch(`http://localhost:8000/watch?videoId=${currentSong.youtubeId}`);
+                                            const data = await res.json();
+                                            const tracks = data.data?.tracks || [];
+                                            suggestions = tracks.map((t: any) => ({
+                                                id: t.videoId,
+                                                name: t.title,
+                                                type: 'youtube',
+                                                artists: { primary: t.artists ? t.artists.map((a: any) => ({ name: a.name })) : [{ name: 'Unknown' }] },
+                                                image: t.thumbnail || [],
+                                                youtubeId: t.videoId
+                                            }));
+                                        } catch (e) {
+                                            console.error("YT Autoplay error", e);
+                                        }
+                                    } else {
+                                        const res = await api.get(`/songs/${currentSong.id}/suggestions`);
+                                        suggestions = res.data?.data || [];
+                                    }
 
                                     if (suggestions.length > 0) {
                                         // 1. Filter out songs that are already in history (last 20) or in the upcoming queue

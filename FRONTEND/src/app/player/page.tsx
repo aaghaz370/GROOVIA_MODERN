@@ -228,17 +228,29 @@ function PlayerContent() {
 
     const fetchRelatedSongs = async () => {
         if (!currentSong?.id) return;
-        if (currentSong.youtubeId) {
-            setRelatedSongs([]);
-            return;
-        }
 
         try {
             setLoadingRelated(true);
-            const response = await api.get(`/songs/${currentSong.id}/suggestions`, {
-                params: { limit: 20 }
-            });
-            setRelatedSongs(response.data?.data || []);
+
+            if (currentSong.youtubeId) {
+                const response = await fetch(`http://localhost:8000/watch?videoId=${currentSong.youtubeId}`);
+                const data = await response.json();
+                const tracks = data.data?.tracks || [];
+                const mappedSongs = tracks.map((t: any) => ({
+                    id: t.videoId,
+                    name: t.title,
+                    type: 'youtube', // distinctive
+                    artists: { primary: t.artists ? t.artists.map((a: any) => ({ name: a.name })) : [{ name: 'Unknown' }] },
+                    image: t.thumbnail || [],
+                    youtubeId: t.videoId
+                }));
+                setRelatedSongs(mappedSongs);
+            } else {
+                const response = await api.get(`/songs/${currentSong.id}/suggestions`, {
+                    params: { limit: 20 }
+                });
+                setRelatedSongs(response.data?.data || []);
+            }
         } catch (error) {
             console.error('Error fetching related songs:', error);
             setRelatedSongs([]);
