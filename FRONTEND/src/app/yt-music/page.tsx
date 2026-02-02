@@ -4,6 +4,7 @@ import { useState } from 'react';
 import QuickPicks from '@/components/yt-music/QuickPicks';
 import AlbumsForYou from '@/components/yt-music/AlbumsForYou';
 import LongListening from '@/components/yt-music/LongListening';
+import FeaturedPlaylists from '@/components/yt-music/FeaturedPlaylists';
 
 export default function YTMusicPage() {
     const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
@@ -18,6 +19,9 @@ export default function YTMusicPage() {
 
             {/* Section 3: Long Listening */}
             <LongListening onPlay={setCurrentVideoId} />
+
+            {/* Section 4: Featured Playlists */}
+            <FeaturedPlaylists />
 
             {/* Additional sections will be added here as requested */}
 
