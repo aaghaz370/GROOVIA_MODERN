@@ -26,7 +26,8 @@ import {
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
 import { IoShareOutline, IoChevronBack, IoChevronForward, IoLogoWhatsapp, IoLogoFacebook, IoLogoTwitter, IoCopyOutline, IoClose } from 'react-icons/io5';
 import SongImage from '@/components/ui/SongImage';
-import { getImageUrl } from '@/lib/imageUtils';
+import { getImageColor } from '@/lib/colorUtils';
+import { YT_API_URL } from '@/lib/config';
 
 function PlayerContent() {
     const router = useRouter();
@@ -93,13 +94,13 @@ function PlayerContent() {
         try {
             if (currentSong.youtubeId) {
                 // 1. Fetch Watch Playlist to get Lyrics ID
-                const watchRes = await fetch(`http://localhost:8000/watch?videoId=${currentSong.youtubeId}`);
+                const watchRes = await fetch(`${YT_API_URL}/watch?videoId=${currentSong.youtubeId}`);
                 const watchData = await watchRes.json();
                 const lyricsId = watchData.data?.lyrics;
 
                 let lyricsText = null;
                 if (lyricsId) {
-                    const lyricsRes = await fetch(`http://localhost:8000/lyrics?browseId=${lyricsId}`);
+                    const lyricsRes = await fetch(`${YT_API_URL}/lyrics?browseId=${lyricsId}`);
                     const lyricsData = await lyricsRes.json();
                     lyricsText = lyricsData.data?.lyrics;
                 }

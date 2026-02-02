@@ -68,7 +68,7 @@ export default function AlbumPage() {
             const idStr = String(params.id);
             if (idStr.startsWith('MPREb') || idStr.startsWith('OLAK5')) {
                 try {
-                    const res = await fetch(`http://localhost:8000/album?browseId=${params.id}`);
+                    const res = await fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/album?browseId=${params.id}`);
                     const json = await res.json();
 
                     if (!json.data) throw new Error("No data");
@@ -95,8 +95,8 @@ export default function AlbumPage() {
                                 image: t.thumbnails?.length ? t.thumbnails.map((thumb: any) => ({ quality: 'high', url: thumb.url })) : (ytData.thumbnails?.map((thumb: any) => ({ quality: 'high', url: thumb.url })) || []),
                                 artists: { primary: t.artists || ytData.artists || [] },
                                 youtubeId: t.videoId, // For Embed Player
-                                downloadUrl: [{ quality: '320kbps', url: `http://localhost:8000/stream?videoId=${t.videoId}` }],
-                                url: `http://localhost:8000/stream?videoId=${t.videoId}`
+                                downloadUrl: [{ quality: '320kbps', url: `${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/stream?videoId=${t.videoId}` }],
+                                url: `${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/stream?videoId=${t.videoId}`
                             };
                         }) || []
                     };

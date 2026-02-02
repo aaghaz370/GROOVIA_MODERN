@@ -185,7 +185,7 @@ export const useMusicStore = create<MusicState>()(
                                     let suggestions: any[] = [];
                                     if (currentSong.youtubeId) {
                                         try {
-                                            const res = await fetch(`http://localhost:8000/watch?videoId=${currentSong.youtubeId}`);
+                                            const res = await fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/watch?videoId=${currentSong.youtubeId}`);
                                             const data = await res.json();
                                             const tracks = data.data?.tracks || [];
                                             suggestions = tracks.map((t: any) => ({

@@ -7,21 +7,23 @@ import SongImage from '@/components/ui/SongImage';
 import { getImageUrl } from '@/lib/imageUtils';
 import Link from 'next/link';
 import he from 'he';
-import { BiPlay, BiDotsVerticalRounded, BiSearch, BiX } from 'react-icons/bi';
+import { BiPlay, BiDotsVerticalRounded, BiSearch, BiX, BiCaretDown, BiCheck, BiVideo } from 'react-icons/bi';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import { MdHistory } from 'react-icons/md';
+import { YT_API_URL } from '@/lib/config';
 
 interface SearchResults {
     songs: any[];
     albums: any[];
     artists: any[];
     playlists: any[];
+    videos: any[];
     topResult: any | null;
 }
 
-type FilterType = 'all' | 'songs' | 'albums' | 'artists' | 'playlists';
+type FilterType = 'all' | 'songs' | 'albums' | 'artists' | 'playlists' | 'videos';
 
-const filters: { id: FilterType; label: string }[] = [
+const filtersBase: { id: FilterType; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'songs', label: 'Songs' },
     { id: 'albums', label: 'Albums' },
@@ -29,14 +31,43 @@ const filters: { id: FilterType; label: string }[] = [
     { id: 'playlists', label: 'Playlists' },
 ];
 
+// Helper to map YouTube results to app format
+const mapYoutubeResult = (item: any) => {
+    const type = item.resultType || 'song';
+    // Map Image: YT uses 'thumbnails' array. Map to Groovia format.
+    const image = item.thumbnails?.map((t: any) => ({ quality: 'high', link: t.url })) || [];
+
+    return {
+        id: item.videoId || item.browseId, // videoId for songs/videos, browseId for others
+        name: item.title,
+        type: type === 'song' || type === 'video' ? 'youtube' : type, // Use 'youtube' type for standard playback
+        resultType: type, // Keep original type for classification
+        image: image,
+        youtubeId: item.videoId, // Important for playback
+        artists: {
+            primary: Array.isArray(item.artists) ? item.artists.map((a: any) => ({ name: a.name, id: a.id })) : [{ name: item.artist }]
+        },
+        album: item.album ? { name: item.album.name, id: item.album.id } : undefined,
+        duration: item.duration,
+        year: item.year,
+        description: item.description,
+        url: '', // Handled dynamically
+        downloadUrl: []
+    };
+};
+
 export default function SearchPage() {
     const [query, setQuery] = useState('');
     const [selectedFilter, setSelectedFilter] = useState<FilterType>('all');
+    const [searchSource, setSearchSource] = useState<'groovia' | 'ytmusic'>('groovia');
+    const [showSourceMenu, setShowSourceMenu] = useState(false);
+
     const [results, setResults] = useState<SearchResults>({
         songs: [],
         albums: [],
         artists: [],
         playlists: [],
+        videos: [],
         topResult: null,
     });
     const [loading, setLoading] = useState(false);
@@ -49,6 +80,11 @@ export default function SearchPage() {
     const albumsScrollRef = useRef<HTMLDivElement>(null);
     const artistsScrollRef = useRef<HTMLDivElement>(null);
     const playlistsScrollRef = useRef<HTMLDivElement>(null);
+    const videosScrollRef = useRef<HTMLDivElement>(null);
+
+    const filters = searchSource === 'ytmusic'
+        ? [...filtersBase, { id: 'videos' as FilterType, label: 'Videos' }]
+        : filtersBase;
 
     // Load search history from localStorage on mount
     useEffect(() => {
@@ -89,12 +125,12 @@ export default function SearchPage() {
             if (query.trim()) {
                 performSearch();
             } else {
-                setResults({ songs: [], albums: [], artists: [], playlists: [], topResult: null });
+                setResults({ songs: [], albums: [], artists: [], playlists: [], videos: [], topResult: null });
             }
         }, 300);
 
         return () => clearTimeout(searchTimeout);
-    }, [query, selectedFilter]);
+    }, [query, selectedFilter, searchSource]);
 
     // Auto-hide header on scroll (mobile only)
     useEffect(() => {
@@ -120,80 +156,131 @@ export default function SearchPage() {
     const performSearch = async () => {
         try {
             setLoading(true);
-            let allResults: SearchResults = { songs: [], albums: [], artists: [], playlists: [], topResult: null };
+            let allResults: SearchResults = { songs: [], albums: [], artists: [], playlists: [], videos: [], topResult: null };
 
-            // Fetch based on filter
-            if (selectedFilter === 'all' || selectedFilter === 'songs') {
-                try {
-                    const songsRes = await api.get('/search/songs', {
-                        params: { query, limit: selectedFilter === 'songs' ? 50 : 16 }
-                    });
-                    allResults.songs = songsRes.data?.data?.results || [];
-                } catch (err) {
-                    console.error('Songs search error:', err);
+            if (searchSource === 'groovia') {
+                // Fetch based on filter (Groovia API)
+                if (selectedFilter === 'all' || selectedFilter === 'songs') {
+                    try {
+                        const songsRes = await api.get('/search/songs', {
+                            params: { query, limit: selectedFilter === 'songs' ? 50 : 16 }
+                        });
+                        allResults.songs = songsRes.data?.data?.results || [];
+                    } catch (err) { console.error('Songs search error:', err); }
                 }
-            }
 
-            if (selectedFilter === 'all' || selectedFilter === 'albums') {
-                try {
-                    const albumsRes = await api.get('/search/albums', {
-                        params: { query, limit: selectedFilter === 'albums' ? 50 : 12 }
-                    });
-                    allResults.albums = albumsRes.data?.data?.results || [];
-                } catch (err) {
-                    console.error('Albums search error:', err);
+                if (selectedFilter === 'all' || selectedFilter === 'albums') {
+                    try {
+                        const albumsRes = await api.get('/search/albums', {
+                            params: { query, limit: selectedFilter === 'albums' ? 50 : 12 }
+                        });
+                        allResults.albums = albumsRes.data?.data?.results || [];
+                    } catch (err) { console.error('Albums search error:', err); }
                 }
-            }
 
-            if (selectedFilter === 'all' || selectedFilter === 'artists') {
-                try {
-                    const artistsRes = await api.get('/search/artists', {
-                        params: { query, limit: selectedFilter === 'artists' ? 50 : 12 }
-                    });
-                    allResults.artists = artistsRes.data?.data?.results || [];
-                } catch (err) {
-                    console.error('Artists search error:', err);
+                if (selectedFilter === 'all' || selectedFilter === 'artists') {
+                    try {
+                        const artistsRes = await api.get('/search/artists', {
+                            params: { query, limit: selectedFilter === 'artists' ? 50 : 12 }
+                        });
+                        allResults.artists = artistsRes.data?.data?.results || [];
+                    } catch (err) { console.error('Artists search error:', err); }
                 }
-            }
 
-            if (selectedFilter === 'all' || selectedFilter === 'playlists') {
-                try {
-                    const playlistsRes = await api.get('/search/playlists', {
-                        params: { query, limit: selectedFilter === 'playlists' ? 50 : 12 }
-                    });
-                    allResults.playlists = playlistsRes.data?.data?.results || [];
-                } catch (err) {
-                    console.error('Playlists search error:', err);
+                if (selectedFilter === 'all' || selectedFilter === 'playlists') {
+                    try {
+                        const playlistsRes = await api.get('/search/playlists', {
+                            params: { query, limit: selectedFilter === 'playlists' ? 50 : 12 }
+                        });
+                        allResults.playlists = playlistsRes.data?.data?.results || [];
+                    } catch (err) { console.error('Playlists search error:', err); }
                 }
-            }
 
-            // Determine top result from combined results (only in 'all' filter)
-            if (selectedFilter === 'all') {
-                const queryLower = query.toLowerCase();
+                // Determine top result
+                if (selectedFilter === 'all') {
+                    const queryLower = query.toLowerCase();
+                    const topSong = allResults.songs.find((s: any) => s.name?.toLowerCase().includes(queryLower));
+                    const topAlbum = allResults.albums.find((a: any) => a.name?.toLowerCase().includes(queryLower));
+                    const topArtist = allResults.artists.find((a: any) => a.name?.toLowerCase().includes(queryLower));
+                    const topPlaylist = allResults.playlists.find((p: any) => p.name?.toLowerCase().includes(queryLower));
 
-                // Check for exact or close matches
-                const topSong = allResults.songs.find((s: any) => s.name?.toLowerCase().includes(queryLower));
-                const topAlbum = allResults.albums.find((a: any) => a.name?.toLowerCase().includes(queryLower));
-                const topArtist = allResults.artists.find((a: any) => a.name?.toLowerCase().includes(queryLower));
-                const topPlaylist = allResults.playlists.find((p: any) => p.name?.toLowerCase().includes(queryLower));
+                    allResults.topResult = topArtist || topAlbum || topPlaylist || topSong || null;
+                    if (allResults.topResult) {
+                        allResults.topResult.type = topArtist ? 'artist' : topAlbum ? 'album' : topPlaylist ? 'playlist' : 'song';
+                    }
+                }
 
-                // Priority: Artist > Album > Playlist > Song
-                allResults.topResult = topArtist || topAlbum || topPlaylist || topSong || null;
-                if (allResults.topResult) {
-                    allResults.topResult.type = topArtist ? 'artist' : topAlbum ? 'album' : topPlaylist ? 'playlist' : 'song';
+            } else {
+                // YT MUSIC Search
+                if (selectedFilter === 'all') {
+                    try {
+                        // Parallel fetch for specific types to ensure "All" is populated correctly
+                        const [songsRes, videosRes, albumsRes, artistsRes, playlistsRes] = await Promise.all([
+                            fetch(`${YT_API_URL}/search?query=${encodeURIComponent(query)}&filter=songs&limit=16`),
+                            fetch(`${YT_API_URL}/search?query=${encodeURIComponent(query)}&filter=videos&limit=16`),
+                            fetch(`${YT_API_URL}/search?query=${encodeURIComponent(query)}&filter=albums&limit=12`),
+                            fetch(`${YT_API_URL}/search?query=${encodeURIComponent(query)}&filter=artists&limit=12`),
+                            fetch(`${YT_API_URL}/search?query=${encodeURIComponent(query)}&filter=playlists&limit=12`)
+                        ]);
+
+                        const [songsData, videosData, albumsData, artistsData, playlistsData] = await Promise.all([
+                            songsRes.json(), videosRes.json(), albumsRes.json(), artistsRes.json(), playlistsRes.json()
+                        ]);
+
+                        if (songsData.data) allResults.songs = songsData.data.map((item: any) => mapYoutubeResult({ ...item, resultType: 'song' }));
+                        if (videosData.data) allResults.videos = videosData.data.map((item: any) => mapYoutubeResult({ ...item, resultType: 'video' }));
+                        if (albumsData.data) allResults.albums = albumsData.data.map((item: any) => mapYoutubeResult({ ...item, resultType: 'album' }));
+                        if (artistsData.data) allResults.artists = artistsData.data.map((item: any) => mapYoutubeResult({ ...item, resultType: 'artist' }));
+                        if (playlistsData.data) allResults.playlists = playlistsData.data.map((item: any) => mapYoutubeResult({ ...item, resultType: 'playlist' }));
+
+                        // Determine Top Result (Prioritize Artist > Song > Video)
+                        if (allResults.artists.length > 0) allResults.topResult = { ...allResults.artists[0], type: 'artist' };
+                        else if (allResults.songs.length > 0) allResults.topResult = { ...allResults.songs[0], type: 'song' };
+                        else if (allResults.videos.length > 0) allResults.topResult = { ...allResults.videos[0], type: 'video' };
+
+                    } catch (err) {
+                        console.error("Error fetching YT All results", err);
+                    }
+                } else {
+                    // Specific Filter
+                    const typeMap: Record<string, string> = {
+                        'songs': 'songs',
+                        'albums': 'albums',
+                        'artists': 'artists',
+                        'playlists': 'playlists',
+                        'videos': 'videos'
+                    };
+                    const ytFilter = typeMap[selectedFilter];
+
+                    try {
+                        const res = await fetch(`${YT_API_URL}/search?query=${encodeURIComponent(query)}&filter=${ytFilter}&limit=50`);
+                        const data = await res.json();
+
+                        if (data.data) {
+                            const rType = selectedFilter === 'playlists' ? 'playlist' : selectedFilter.slice(0, -1);
+                            const mappedItems = data.data.map((item: any) => mapYoutubeResult({ ...item, resultType: rType }));
+
+                            if (selectedFilter === 'songs') allResults.songs = mappedItems;
+                            else if (selectedFilter === 'videos') allResults.videos = mappedItems;
+                            else if (selectedFilter === 'albums') allResults.albums = mappedItems;
+                            else if (selectedFilter === 'artists') allResults.artists = mappedItems;
+                            else if (selectedFilter === 'playlists') allResults.playlists = mappedItems;
+                        }
+                    } catch (err) { console.error(`Error fetching YT ${selectedFilter}`, err); }
                 }
             }
 
             setResults(allResults);
 
-            // Save to history if we have any results
+            // Save to history
             const hasAnyResults = allResults.songs.length > 0 || allResults.albums.length > 0 ||
-                allResults.artists.length > 0 || allResults.playlists.length > 0;
+                allResults.artists.length > 0 || allResults.playlists.length > 0 || allResults.videos.length > 0;
             if (hasAnyResults) {
                 saveToHistory(query.trim());
             }
         } catch (error) {
             console.error('Search error:', error);
+            setResults({ songs: [], albums: [], artists: [], playlists: [], videos: [], topResult: null });
         } finally {
             setLoading(false);
         }
@@ -210,35 +297,73 @@ export default function SearchPage() {
     };
 
     const hasResults = results.songs.length > 0 || results.albums.length > 0 ||
-        results.artists.length > 0 || results.playlists.length > 0;
+        results.artists.length > 0 || results.playlists.length > 0 || results.videos.length > 0;
 
     return (
         <div className="min-h-screen pb-32 md:pb-24 bg-sidebar">
             {/* Search Header */}
             <div className={`pt-6 pb-4 md:px-6 bg-sidebar sticky top-0 z-30 -mx-4 px-4 md:mx-0 transition-transform duration-300 md:translate-y-0 ${showHeader ? 'translate-y-0' : '-translate-y-full'}`}>
                 <div className="max-w-7xl mx-auto">
-                    {/* Search Input */}
-                    <div className="relative mb-4 -mx-4 px-4">
-                        <BiSearch className="absolute left-8 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
-                        <input
-                            type="text"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Search songs, albums, artists, playlists..."
-                            className="w-full bg-zinc-900 text-white pl-14 pr-4 py-4 rounded-full text-base focus:outline-none focus:ring-2 focus:ring-primary"
-                            autoFocus
-                        />
+                    {/* Search Input & Source Selector */}
+                    <div className="relative mb-4 -mx-4 px-4 flex gap-3 items-center">
+                        <div className="relative flex-1">
+                            <BiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
+                            <input
+                                type="text"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder={`Search ${searchSource === 'groovia' ? 'Groovia' : 'YT Music'}...`}
+                                className="w-full bg-zinc-900 text-white pl-12 pr-4 py-3.5 rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-primary shadow-lg"
+                                autoFocus
+                            />
+                        </div>
+
+                        {/* Source Selector */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowSourceMenu(!showSourceMenu)}
+                                className="flex items-center gap-2 px-4 py-3.5 bg-zinc-900 rounded-2xl text-white font-semibold shadow-lg hover:bg-zinc-800 transition-all border border-white/5 whitespace-nowrap"
+                            >
+                                <span className={searchSource === 'groovia' ? 'text-primary' : 'text-red-500'}>
+                                    {searchSource === 'groovia' ? 'Groovia' : 'YT Music'}
+                                </span>
+                                <BiCaretDown size={16} className="text-gray-400" />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {showSourceMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowSourceMenu(false)} />
+                                    <div className="absolute right-0 top-full mt-2 w-40 bg-zinc-900 rounded-xl shadow-xl border border-white/10 overflow-hidden z-50 py-1">
+                                        <button
+                                            onClick={() => { setSearchSource('groovia'); setShowSourceMenu(false); }}
+                                            className="w-full px-4 py-3 text-left hover:bg-white/5 flex items-center justify-between group"
+                                        >
+                                            <span className="font-medium">Groovia</span>
+                                            {searchSource === 'groovia' && <BiCheck className="text-primary" size={20} />}
+                                        </button>
+                                        <button
+                                            onClick={() => { setSearchSource('ytmusic'); setShowSourceMenu(false); }}
+                                            className="w-full px-4 py-3 text-left hover:bg-white/5 flex items-center justify-between group"
+                                        >
+                                            <span className="font-medium text-red-400">YT Music</span>
+                                            {searchSource === 'ytmusic' && <BiCheck className="text-red-500" size={20} />}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     {/* Filter Tabs */}
                     {query && (
-                        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
+                        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2">
                             {filters.map((filter) => (
                                 <button
                                     key={filter.id}
                                     onClick={() => setSelectedFilter(filter.id)}
                                     className={`px-4 py-2 rounded-full font-semibold text-sm whitespace-nowrap transition-all ${selectedFilter === filter.id
-                                        ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                                        ? searchSource === 'ytmusic' ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'bg-primary text-white shadow-lg shadow-primary/30'
                                         : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800 hover:text-white'
                                         }`}
                                 >
@@ -411,6 +536,50 @@ export default function SearchPage() {
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+
+                        {/* Videos Section - YouTube Style */}
+                        {(selectedFilter === 'all' || selectedFilter === 'videos') && results.videos.length > 0 && (
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-2xl md:text-3xl font-bold text-white">Videos</h2>
+                                    {selectedFilter === 'all' && (
+                                        <div className="hidden md:flex gap-2">
+                                            <button onClick={() => handleScroll(videosScrollRef, 'left')} className="p-2 rounded-full bg-zinc-900 hover:bg-zinc-800 text-white">
+                                                <IoChevronBack size={20} />
+                                            </button>
+                                            <button onClick={() => handleScroll(videosScrollRef, 'right')} className="p-2 rounded-full bg-zinc-900 hover:bg-zinc-800 text-white">
+                                                <IoChevronForward size={20} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className={selectedFilter === 'all' ? 'overflow-x-auto scrollbar-hide scroll-smooth -mx-4 px-4' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-1'} ref={selectedFilter === 'all' ? videosScrollRef : undefined}>
+                                    <div className={selectedFilter === 'all' ? 'flex gap-4' : 'contents'}>
+                                        {results.videos.map((video) => (
+                                            <div
+                                                key={video.id}
+                                                onClick={() => playSong({ ...video })}
+                                                className={`group cursor-pointer ${selectedFilter === 'all' ? 'flex-shrink-0 w-[280px]' : ''}`}
+                                            >
+                                                <div className="relative aspect-video rounded-xl overflow-hidden mb-3 bg-zinc-900">
+                                                    <SongImage src={getImageUrl(video.image, 'high')} alt={video.name || 'Video'} fill className="object-cover group-hover:scale-105 transition-transform" sizes="280px" fallbackSize={80} />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <BiPlay size={40} className="text-white" />
+                                                    </div>
+                                                    <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                                                        {video.duration && <span className="bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium">{video.duration}</span>}
+                                                    </div>
+                                                </div>
+                                                <h3 className="text-white font-semibold text-base line-clamp-2 mb-1">{he.decode(video.name || '')}</h3>
+                                                <p className="text-gray-400 text-sm line-clamp-1">{video.artists?.primary?.map((a: any) => a.name).join(', ') || 'Unknown'}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                         )}
 

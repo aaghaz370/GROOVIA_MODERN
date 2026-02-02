@@ -22,7 +22,7 @@ const AlbumsForYou = () => {
                 // Fetch multiple to ensure variety and robustness
                 const results = await Promise.all(
                     queries.map(q =>
-                        fetch(`http://localhost:8000/search?query=${encodeURIComponent(q)}&filter=albums&limit=10`)
+                        fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/search?query=${encodeURIComponent(q)}&filter=albums&limit=10`)
                             .then(res => res.json())
                             .then(data => data.data || [])
                             .catch(() => [])

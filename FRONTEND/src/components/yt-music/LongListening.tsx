@@ -24,7 +24,7 @@ const LongListening = () => {
                 const results = await Promise.all(
                     queries.map(q =>
                         // Explicitly request videos to get duration-heavy content
-                        fetch(`http://localhost:8000/search?query=${encodeURIComponent(q)}&filter=videos&limit=10`)
+                        fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/search?query=${encodeURIComponent(q)}&filter=videos&limit=10`)
                             .then(res => {
                                 if (!res.ok) throw new Error('Fetch failed');
                                 return res.json();

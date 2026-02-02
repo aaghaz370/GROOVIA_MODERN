@@ -160,7 +160,7 @@ export default function PlaylistPage() {
             // Case 0: YouTube Playlist (PL, VL, RD prefixes)
             if (id.startsWith('PL') || id.startsWith('VL') || id.startsWith('RD') || id.startsWith('OLAK5')) { // OLAK5 can be Album or Playlist in some contexts, but let's safe guard
                 try {
-                    const res = await fetch(`http://localhost:8000/playlist?browseId=${id}`);
+                    const res = await fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/playlist?browseId=${id}`);
                     const json = await res.json();
 
                     if (!json.data) throw new Error("No data");
@@ -188,8 +188,8 @@ export default function PlaylistPage() {
                                 image: t.thumbnails?.length ? t.thumbnails.map((thumb: any) => ({ quality: 'high', url: thumb.url })) : (ytData.thumbnails?.map((thumb: any) => ({ quality: 'high', url: thumb.url })) || []),
                                 artists: { primary: t.artists || [] },
                                 youtubeId: t.videoId, // For Embed Player
-                                downloadUrl: [{ quality: '320kbps', url: `http://localhost:8000/stream?videoId=${t.videoId}` }],
-                                url: `http://localhost:8000/stream?videoId=${t.videoId}`
+                                downloadUrl: [{ quality: '320kbps', url: `${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/stream?videoId=${t.videoId}` }],
+                                url: `${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/stream?videoId=${t.videoId}`
                             };
                         }) || []
                     };
