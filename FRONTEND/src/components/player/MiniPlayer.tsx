@@ -167,7 +167,7 @@ const MiniPlayer = () => {
                     <ReactPlayer
                         key="yt-player-instance"
                         ref={playerRef}
-                        url={`https://www.youtube.com/watch?v=${currentSong.youtubeId}&autoplay=1&controls=0&rel=0&showinfo=0&modestbranding=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
+                        src={`https://www.youtube.com/watch?v=${currentSong.youtubeId}&autoplay=1&controls=0&rel=0&showinfo=0&modestbranding=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
                         playing={isPlayingStore}
                         volume={volume / 100}
                         muted={false}
