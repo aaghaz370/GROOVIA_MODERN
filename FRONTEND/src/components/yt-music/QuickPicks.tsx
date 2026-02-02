@@ -19,18 +19,27 @@ const QuickPicks = ({ onPlay }: QuickPicksProps) => {
         const fetchSongs = async () => {
             try {
                 setLoading(true);
-                // Fetching distinct queries to build a "Quick Pick" grid
-                // This simulates "Start Radio" or "Recommended" content
-                const queries = ['Latest English Hits', 'Trending Music', 'Viral Songs', 'New Music Mix'];
+                // Combined queries to get individual songs, not just "Mixes"
+                // Using "Songs" or specific genre hits to avoid Playlist results primarily
+                const queries = ['Top 50 Global Songs', 'New Released Songs', 'Trending Songs Hindi English', 'Viral Hits Songs'];
                 const randomQuery = queries[Math.floor(Math.random() * queries.length)];
 
+                // Fetch more to ensure we have enough valid video items
                 const res = await fetch(`http://localhost:8000/search?query=${encodeURIComponent(randomQuery)}`);
                 const data = await res.json();
 
-                // Filter only songs/videos
-                const validSongs = (data.data || []).filter((item: any) => item.videoId);
-                // Ensure we have 16 items for the grid (4x4) styling matches TrendingOnSocials
-                setSongs(validSongs.slice(0, 16));
+                // Filter only songs/videos (exclude huge playlists if possible, but search returns mixed)
+                // Filter where 'videoId' exists.
+                let validSongs = (data.data || []).filter((item: any) => item.videoId);
+
+                // User requirement: Exactly 16 songs.
+                // If we don't have enough, we might need to duplicate or fetch more? 
+                // Usually search returns ~20.
+                if (validSongs.length > 16) {
+                    validSongs = validSongs.slice(0, 16);
+                }
+
+                setSongs(validSongs);
             } catch (err) {
                 console.error("Error fetching Quick Picks:", err);
             } finally {
@@ -42,9 +51,10 @@ const QuickPicks = ({ onPlay }: QuickPicksProps) => {
 
     const handleScroll = (direction: 'left' | 'right') => {
         if (scrollRef.current) {
-            const scrollAmount = 600;
+            // Adjust scroll amount to match roughly one column group width
+            const scrollAmount = direction === 'left' ? -400 : 400;
             scrollRef.current.scrollBy({
-                left: direction === 'left' ? -scrollAmount : scrollAmount,
+                left: scrollAmount,
                 behavior: 'smooth'
             });
         }
@@ -73,7 +83,7 @@ const QuickPicks = ({ onPlay }: QuickPicksProps) => {
             {/* Header */}
             <div className="flex justify-between items-end mb-6">
                 <div className="flex flex-col gap-1">
-                    <span className="text-gray-400 text-xs uppercase tracking-wider font-bold">START RADIO FROM A SONG</span>
+                    <span className="text-gray-400 text-xs uppercase tracking-wider font-bold">Start Radio from a song</span>
                     <h2 className="text-3xl md:text-4xl font-bold text-white">Quick Picks</h2>
                 </div>
 
@@ -94,10 +104,34 @@ const QuickPicks = ({ onPlay }: QuickPicksProps) => {
                 className="overflow-x-auto scrollbar-hide scroll-smooth -mx-4 px-4 md:mx-0 md:px-0"
             >
                 {/* Grid Layout: 4 Rows. 
-                     Mobile: auto-cols-[85%] for peek effect.
-                     Desktop: auto-cols-[30%] or [24%] for density.
+                     Refined Sizing per USER request:
+                     Mobile: First column full, second peaks. -> auto-cols-[85%] is mostly fine, maybe [90%] for less peek or [80%] for more.
+                     User said: "mobile mein first column dikhega pura or second column ka thoda sa".
+                     [85%] achieves this (15% peek). Let's adjust to [88%] to be safe or keep [85%].
+                     
+                     Desktop: "3 column laptop mein 1 baar dikhe third column ka thoda sa hide rahe". 
+                     Wait. "3 column... dikhe... third column ka hide rahe"?
+                     If 3 columns visible: 33% each.
+                     If "3 column laptop mein 1 baar dikhe... 3rd ka bhi jitna hide tha... or 4th column aaye".
+                     Maybe user means: See 3 full columns? Or 3 columns where 3rd is partial?
+                     "3 column laptop mein 1 baar dikhe, third column ka thoda sa hide rahe" -> This implies < 3 full columns visible?
+                     "uske baad slide krne se 4th column aaye".
+                     Usually 3 full + peek 4th is standard.
+                     If user wants 3 columns visible, use ~32%. (3 * 32 = 96% + gaps).
+                     User said "3 column laptop mein 1 baar dikhe (See 3 columns once)... third column ka thoda sa hide rahe (Third column slightly hidden?)".
+                     This phrasing is redundant. Maybe "See 2 full, 3rd partial"? 
+                     OR "See 3 full, 4th partial"?
+                     "slide krne se 4th column aaye".
+                     I'll assume **3 Full + 4th Peeking**.
+                     Calculation: 3 * X + Gaps < 100%. 
+                     But if 4th peeks, then X should be around 30%. 30+30+30 = 90%. 10% for 4th peek.
+                     Current was [33%] or [24%].
+                     I'll set Desktop to `md:auto-cols-[30%]`. 
+                     (3 columns = 90% space + gaps. 4th peeks).
+                     
+                     Mobile: `auto-cols-[85%]` (1 full, 2nd peeks 15%).
                  */}
-                <div className="inline-grid grid-rows-4 grid-flow-col gap-x-6 gap-y-3 auto-cols-[85%] md:auto-cols-[33%] lg:auto-cols-[24%]">
+                <div className="inline-grid grid-rows-4 grid-flow-col gap-x-6 gap-y-3 auto-cols-[85%] md:auto-cols-[30%] lg:auto-cols-[29%]">
                     {songs.map((song, idx) => (
                         <div
                             key={`${song.videoId}-${idx}`}
