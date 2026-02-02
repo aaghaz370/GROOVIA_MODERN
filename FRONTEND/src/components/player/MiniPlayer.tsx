@@ -66,6 +66,13 @@ const MiniPlayer = () => {
         setError(false);
         setIsPlaying(true); // Assume play will start
 
+        // FORCE STOP previous audio immediately to prevent overlap
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.removeAttribute('src'); // Cleanest way to detach
+            audioRef.current.load(); // Force reset
+        }
+
         if (isYoutube) {
             setAudioUrl('');
         }
@@ -165,7 +172,7 @@ const MiniPlayer = () => {
             {isYoutube && currentSong?.youtubeId && (
                 <div style={{ position: 'fixed', bottom: 0, right: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', zIndex: -5 }}>
                     <ReactPlayer
-                        key="yt-player-instance"
+                        key={currentSong?.id || "yt-player"}
                         ref={playerRef}
                         src={`https://www.youtube.com/watch?v=${currentSong.youtubeId}&autoplay=1&controls=0&rel=0&showinfo=0&modestbranding=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
                         playing={isPlayingStore}

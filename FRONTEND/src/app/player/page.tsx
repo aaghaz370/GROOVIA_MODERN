@@ -260,7 +260,7 @@ function PlayerContent() {
                     name: t.title,
                     type: 'youtube', // distinctive
                     artists: { primary: t.artists ? t.artists.map((a: any) => ({ name: a.name })) : [{ name: 'Unknown' }] },
-                    image: t.thumbnail ? t.thumbnail.map((thumb: any) => ({ quality: 'high', url: thumb.url })) : [],
+                    image: t.thumbnail ? t.thumbnail.sort((a: any, b: any) => a.width - b.width).map((thumb: any) => ({ quality: 'high', url: thumb.url })) : [],
                     youtubeId: t.videoId
                 }));
                 setRelatedSongs(mappedSongs);

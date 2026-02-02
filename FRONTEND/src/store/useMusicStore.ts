@@ -193,7 +193,7 @@ export const useMusicStore = create<MusicState>()(
                                                 name: t.title,
                                                 type: 'youtube',
                                                 artists: { primary: t.artists ? t.artists.map((a: any) => ({ name: a.name })) : [{ name: 'Unknown' }] },
-                                                image: t.thumbnail ? t.thumbnail.map((thumb: any) => ({ quality: 'high', url: thumb.url })) : [],
+                                                image: t.thumbnail ? t.thumbnail.sort((a: any, b: any) => a.width - b.width).map((thumb: any) => ({ quality: 'high', url: thumb.url })) : [],
                                                 youtubeId: t.videoId
                                             }));
                                         } catch (e) {
@@ -266,8 +266,9 @@ export const useMusicStore = create<MusicState>()(
                                 set({ isPlaying: false });
                                 return;
                             }
-                            // Loop back to start if manual next and no suggestions found
-                            nextIndex = 0;
+                            // Stop if manual next and no suggestions found (Don't restart queue to avoid replaying 'Last Played')
+                            set({ isPlaying: false });
+                            return;
                         } else {
                             // Repeat All
                             nextIndex = 0;
