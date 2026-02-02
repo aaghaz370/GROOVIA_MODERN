@@ -93,6 +93,7 @@ function PlayerContent() {
         if (!currentSong?.id) return;
         // Don't re-fetch if we already have data for this song
         if (fullSongDetails?.id === currentSong.id) return;
+        if (currentSong.youtubeId) return; // Skip for YouTube songs
 
         setLoadingDetails(true);
         try {
@@ -227,6 +228,10 @@ function PlayerContent() {
 
     const fetchRelatedSongs = async () => {
         if (!currentSong?.id) return;
+        if (currentSong.youtubeId) {
+            setRelatedSongs([]);
+            return;
+        }
 
         try {
             setLoadingRelated(true);
