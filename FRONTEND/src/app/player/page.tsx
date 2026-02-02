@@ -87,16 +87,38 @@ function PlayerContent() {
 
     const fetchSongDetails = async () => {
         if (!currentSong?.id) return;
-        // Don't re-fetch if we already have data for this song
         if (fullSongDetails?.id === currentSong.id) return;
-        if (currentSong.youtubeId) return; // Skip for YouTube songs
 
         setLoadingDetails(true);
         try {
-            // Fetch Song Details
-            const songRes = await api.get(`/songs/${currentSong.id}`);
-            if (songRes.data?.data?.[0]) {
-                setFullSongDetails(songRes.data.data[0]);
+            if (currentSong.youtubeId) {
+                // 1. Fetch Watch Playlist to get Lyrics ID
+                const watchRes = await fetch(`http://localhost:8000/watch?videoId=${currentSong.youtubeId}`);
+                const watchData = await watchRes.json();
+                const lyricsId = watchData.data?.lyrics;
+
+                let lyricsText = null;
+                if (lyricsId) {
+                    const lyricsRes = await fetch(`http://localhost:8000/lyrics?browseId=${lyricsId}`);
+                    const lyricsData = await lyricsRes.json();
+                    lyricsText = lyricsData.data?.lyrics;
+                }
+
+                setFullSongDetails({
+                    id: currentSong.id,
+                    artists: currentSong.artists,
+                    album: currentSong.album,
+                    lyrics: lyricsText,
+                    hasLyrics: !!lyricsText,
+                    image: currentSong.image // Ensure image availability
+                });
+
+            } else {
+                // Fetch Song Details (Saavn)
+                const songRes = await api.get(`/songs/${currentSong.id}`);
+                if (songRes.data?.data?.[0]) {
+                    setFullSongDetails(songRes.data.data[0]);
+                }
             }
 
         } catch (error) {
@@ -1113,6 +1135,16 @@ function PlayerContent() {
                                         </div>
                                     ) : fullSongDetails ? (
                                         <>
+                                            {/* Lyrics */}
+                                            {(fullSongDetails.lyrics || fullSongDetails.hasLyrics === 'true') && (
+                                                <div>
+                                                    <h3 className="text-2xl font-bold text-white mb-4">Lyrics</h3>
+                                                    <p className="text-gray-300 whitespace-pre-line leading-relaxed text-lg bg-white/5 p-6 rounded-2xl border border-white/5">
+                                                        {he.decode(fullSongDetails.lyrics || "Lyrics not available in text format.")}
+                                                    </p>
+                                                </div>
+                                            )}
+
                                             {/* Artists (Desktop) */}
                                             <div>
                                                 <h3 className="text-2xl font-bold text-white mb-4">Artists</h3>
