@@ -58,12 +58,18 @@ const MiniPlayer = () => {
     // Determine Source
     const isYoutube = !!currentSong?.youtubeId;
 
-    // Handle Source Switching
+    // Handle Source Switching & State Reset
     useEffect(() => {
+        // Immediate UI Reset when song changes
+        setCurrentTime(0);
+        setDuration(0);
+        setError(false);
+        setIsPlaying(true); // Assume play will start
+
         if (isYoutube) {
             setAudioUrl('');
         }
-    }, [isYoutube, currentSong?.id]);
+    }, [currentSong?.id, isYoutube]);
 
     // Fetch Song URL (Standard)
     useEffect(() => {
@@ -103,13 +109,11 @@ const MiniPlayer = () => {
     useEffect(() => {
         if (seekTime !== null) {
             if (isYoutube && playerRef.current) {
-                // v3 API: Use currentTime property
-                // Guard against uninitialized player
+                // Optimize Seek: Use optimized buffering strategy
                 if (typeof playerRef.current.currentTime !== 'undefined') {
                     playerRef.current.currentTime = seekTime;
                 } else if (typeof playerRef.current.seekTo === 'function') {
-                    // Fallback for v2 if somehow used
-                    playerRef.current.seekTo(seekTime);
+                    playerRef.current.seekTo(seekTime, 'seconds');
                 }
             } else if (!isYoutube && audioRef.current) {
                 audioRef.current.currentTime = seekTime;
@@ -161,13 +165,27 @@ const MiniPlayer = () => {
             {isYoutube && currentSong?.youtubeId && (
                 <div style={{ position: 'fixed', bottom: 0, right: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', zIndex: -5 }}>
                     <ReactPlayer
+                        key="yt-player-instance"
                         ref={playerRef}
-                        src={`https://www.youtube.com/watch?v=${currentSong.youtubeId}`}
+                        url={`https://www.youtube.com/watch?v=${currentSong.youtubeId}`}
                         playing={isPlayingStore}
                         volume={volume / 100}
                         muted={false}
                         width="100%"
                         height="100%"
+                        config={{
+                            youtube: {
+                                playerVars: {
+                                    autoplay: 1,
+                                    controls: 0,
+                                    rel: 0,
+                                    showinfo: 0,
+                                    modestbranding: 1,
+                                    playsinline: 1,
+                                    origin: typeof window !== 'undefined' ? window.location.origin : undefined
+                                }
+                            }
+                        }}
                         onTimeUpdate={(e: any) => {
                             const time = e.currentTarget.currentTime;
                             if (time !== undefined && isFinite(time)) {

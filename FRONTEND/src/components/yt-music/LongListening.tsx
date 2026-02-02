@@ -5,11 +5,11 @@ import { BiPlay, BiDotsVerticalRounded, BiTimeFive } from 'react-icons/bi';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
 
-interface LongListeningProps {
-    onPlay: (videoId: string) => void;
-}
+import { useMusicStore } from '@/store/useMusicStore';
 
-const LongListening = ({ onPlay }: LongListeningProps) => {
+interface LongListeningProps { } // No props needed anymore
+
+const LongListening = () => {
     const [songs, setSongs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,6 +68,44 @@ const LongListening = ({ onPlay }: LongListeningProps) => {
         fetchSongs();
     }, []);
 
+    const playSong = useMusicStore((state) => state.playSong);
+    const setQueue = useMusicStore((state) => state.setQueue);
+
+    const handlePlay = (song: any) => {
+        const songObj = {
+            id: song.videoId,
+            name: song.title,
+            type: 'youtube',
+            youtubeId: song.videoId,
+            url: '',
+            image: song.thumbnails?.map((t: any) => ({ quality: 'high', url: t.url })) || [],
+            downloadUrl: [],
+            artists: {
+                primary: song.artists?.map((a: any) => ({ name: a.name })) || []
+            },
+            duration: song.duration,
+            album: { name: song.album?.name || 'YouTube Music' },
+        };
+
+        const queueList = songs.map(s => ({
+            id: s.videoId,
+            name: s.title,
+            type: 'youtube',
+            youtubeId: s.videoId,
+            url: '',
+            image: s.thumbnails?.map((t: any) => ({ quality: 'high', url: t.url })) || [],
+            downloadUrl: [],
+            artists: {
+                primary: s.artists?.map((a: any) => ({ name: a.name })) || []
+            },
+            duration: s.duration,
+            album: { name: s.album?.name || 'YouTube Music' },
+        }));
+
+        setQueue(queueList);
+        playSong(songObj);
+    };
+
     const handleScroll = (direction: 'left' | 'right') => {
         if (scrollRef.current) {
             const scrollAmount = 500;
@@ -117,7 +155,7 @@ const LongListening = ({ onPlay }: LongListeningProps) => {
                     {songs.map((song, idx) => (
                         <div
                             key={`${song.videoId}-${idx}`}
-                            onClick={() => onPlay(song.videoId)}
+                            onClick={() => handlePlay(song)}
                             className="flex items-center gap-4 p-2 rounded-xl hover:bg-white/5 transition-all cursor-pointer group select-none"
                         >
                             {/* Landscape Thumbnail for Long Listening */}
