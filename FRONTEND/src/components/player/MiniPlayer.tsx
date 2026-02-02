@@ -23,6 +23,7 @@ import {
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
 
 // Dynamically import ReactPlayer
+// Using main import as v3 structure uses sub-exports but main handles detection
 const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
 
 const MiniPlayer = () => {
@@ -37,7 +38,7 @@ const MiniPlayer = () => {
 
     // Refs
     const audioRef = useRef<HTMLAudioElement>(null);
-    const playerRef = useRef<any>(null); // ReactPlayer ref
+    const playerRef = useRef<any>(null); // ReactPlayer v3 ref (HTMLMediaElement-like)
 
     const currentSong = useMusicStore((state) => state.currentSong);
     const playNext = useMusicStore((state) => state.playNext);
@@ -96,13 +97,20 @@ const MiniPlayer = () => {
         };
 
         fetchSongUrl();
-    }, [currentSong?.id, isYoutube]); // Added isYoutube dependency
+    }, [currentSong?.id, isYoutube]);
 
     // Seek Handler
     useEffect(() => {
         if (seekTime !== null) {
             if (isYoutube && playerRef.current) {
-                playerRef.current.seekTo(seekTime);
+                // v3 API: Use currentTime property
+                // Guard against uninitialized player
+                if (typeof playerRef.current.currentTime !== 'undefined') {
+                    playerRef.current.currentTime = seekTime;
+                } else if (typeof playerRef.current.seekTo === 'function') {
+                    // Fallback for v2 if somehow used
+                    playerRef.current.seekTo(seekTime);
+                }
             } else if (!isYoutube && audioRef.current) {
                 audioRef.current.currentTime = seekTime;
             }
@@ -115,7 +123,6 @@ const MiniPlayer = () => {
         if (!isYoutube && audioRef.current) {
             audioRef.current.volume = volume / 100;
         }
-        // ReactPlayer handles volume via prop
     }, [volume, isYoutube]);
 
     // Sync Play/Pause for Standard Audio
@@ -155,37 +162,36 @@ const MiniPlayer = () => {
                 <div style={{ position: 'fixed', bottom: 0, right: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', zIndex: -5 }}>
                     <ReactPlayer
                         ref={playerRef}
-                        url={`https://www.youtube.com/watch?v=${currentSong.youtubeId}`}
+                        src={`https://www.youtube.com/watch?v=${currentSong.youtubeId}`}
                         playing={isPlayingStore}
                         volume={volume / 100}
                         muted={false}
                         width="100%"
                         height="100%"
-                        onProgress={(progress) => {
-                            setCurrentTime(progress.playedSeconds);
-                            setCurrentTimeStore(progress.playedSeconds);
+                        onTimeUpdate={(e: any) => {
+                            const time = e.currentTarget.currentTime;
+                            if (time !== undefined && isFinite(time)) {
+                                setCurrentTime(time);
+                                setCurrentTimeStore(time);
+                            }
                         }}
-                        onDuration={(d) => {
-                            setDuration(d);
-                            setDurationStore(d);
+                        onLoadedMetadata={(e: any) => {
+                            const dur = e.currentTarget.duration;
+                            if (dur !== undefined && isFinite(dur)) {
+                                setDuration(dur);
+                                setDurationStore(dur);
+                            }
                         }}
                         onEnded={() => {
                             if (repeatMode === 'one') {
-                                playerRef.current?.seekTo(0);
+                                if (playerRef.current) playerRef.current.currentTime = 0;
                             } else {
                                 playNext(true);
                             }
                         }}
                         onPlay={() => setIsPlaying(true)}
                         onPause={() => setIsPlaying(false)}
-                        onError={(e) => console.error("ReactPlayer Error:", e)}
-                        config={{
-                            youtube: {
-                                playerVars: {
-                                    origin: typeof window !== 'undefined' ? window.location.origin : undefined
-                                }
-                            }
-                        }}
+                        onError={(e: any) => console.error("ReactPlayer Error:", e)}
                     />
                 </div>
             )}
@@ -255,8 +261,12 @@ const MiniPlayer = () => {
                         const percent = (e.clientX - rect.left) / rect.width;
                         const time = percent * duration;
                         setCurrentTime(time);
-                        if (isYoutube && playerRef.current) playerRef.current.seekTo(time);
-                        else if (audioRef.current) audioRef.current.currentTime = time;
+                        if (isYoutube && playerRef.current) {
+                            // v3 set currentTime
+                            playerRef.current.currentTime = time;
+                        } else if (audioRef.current) {
+                            audioRef.current.currentTime = time;
+                        }
                     }}>
                     <div className="h-full bg-primary relative" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}>
                         <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -314,7 +324,7 @@ const MiniPlayer = () => {
                                 value={currentTime}
                                 onChange={(e) => {
                                     const val = Number(e.target.value);
-                                    if (isYoutube && playerRef.current) playerRef.current.seekTo(val);
+                                    if (isYoutube && playerRef.current) playerRef.current.currentTime = val;
                                     else if (audioRef.current) audioRef.current.currentTime = val;
                                     setCurrentTime(val);
                                 }}
