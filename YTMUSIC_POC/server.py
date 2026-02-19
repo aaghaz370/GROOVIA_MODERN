@@ -5,6 +5,7 @@ from ytmusicapi import YTMusic
 import yt_dlp
 import uvicorn
 import time
+import requests
 
 app = FastAPI()
 
@@ -17,8 +18,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize YTMusic (public, no auth needed)
+# Initialize YTMusic
 yt = YTMusic()
+# Update headers to mimic a browser (bypasses some bot checks)
+yt.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 # Simple in-memory cache for stream URLs (avoid re-extraction)
 # YouTube URLs expire after ~6 hours, so we cache for 4 hours max
@@ -45,12 +51,45 @@ def read_root():
 @app.get("/search")
 def search(query: str, filter: str = None, limit: int = 20):
     try:
+        # Try primary method: ytmusicapi
         results = yt.search(query, filter=filter, limit=limit)
         return {"data": results}
     except Exception as e:
-        print(f"Search error (query={query}, filter={filter}): {e}")
-        # Return empty data instead of 500 — graceful degradation
-        return {"data": []}
+        print(f"ytmusicapi search failed: {e}")
+        try:
+            # Fallback method: yt-dlp search
+            # Map 'songs' filter to yt-dlp
+            print("Falling back to yt-dlp search...")
+            ydl_opts = {
+                'quiet': True,
+                'extract_flat': True,
+                'playlistend': limit,
+                'no_warnings': True,
+            }
+            search_query = f"ytsearch{limit}:{query}"
+            if filter == 'songs':
+                search_query = f"ytsearch{limit}:{query} audio"
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(search_query, download=False)
+                entries = info.get('entries', [])
+                
+                # Transform to fit frontend structure
+                mapped_results = []
+                for entry in entries:
+                    mapped_results.append({
+                        'videoId': entry.get('id'),
+                        'title': entry.get('title'),
+                        'artists': [{'name': entry.get('uploader'), 'id': entry.get('uploader_id')}],
+                        'album': {'name': '', 'id': ''},
+                        'duration': entry.get('duration_string'),
+                        'thumbnails': [{'url': entry.get('thumbnail'), 'width': 0, 'height': 0}],
+                        'isExplicit': False
+                    })
+                return {"data": mapped_results}
+        except Exception as e2:
+            print(f"All search methods failed: {e2}")
+            return {"data": []}
 
 
 @app.get("/watch")
