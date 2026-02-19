@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useMusicStore } from '@/store/useMusicStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { api } from '@/lib/api';
@@ -20,6 +21,9 @@ import {
 } from 'react-icons/bi';
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
 
+// Dynamically import ReactPlayer
+const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
+
 const YT_API = process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000';
 
 const MiniPlayer = () => {
@@ -31,9 +35,11 @@ const MiniPlayer = () => {
     const [volume, setVolume] = useState(100);
     const [audioUrl, setAudioUrl] = useState<string>('');
     const [error, setError] = useState(false);
-    const [loadingStream, setLoadingStream] = useState(false);
+    const [ytFallback, setYtFallback] = useState(false); // When ReactPlayer fails, fallback to /stream
 
+    // Refs
     const audioRef = useRef<HTMLAudioElement>(null);
+    const playerRef = useRef<any>(null);
 
     const currentSong = useMusicStore((state) => state.currentSong);
     const playNext = useMusicStore((state) => state.playNext);
@@ -51,6 +57,8 @@ const MiniPlayer = () => {
     const isLiked = userData?.likedSongs?.some((s: any) => s.id === currentSong?.id) || false;
 
     const isYoutube = !!currentSong?.youtubeId;
+    // Use ReactPlayer when YouTube AND not in fallback mode
+    const useReactPlayer = isYoutube && !ytFallback;
 
     // Reset state on song change
     useEffect(() => {
@@ -58,9 +66,9 @@ const MiniPlayer = () => {
         setDuration(0);
         setError(false);
         setIsPlaying(true);
-        setLoadingStream(false);
+        setYtFallback(false); // Always try ReactPlayer first for new songs
 
-        // FORCE STOP previous audio immediately
+        // FORCE STOP previous audio
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.removeAttribute('src');
@@ -69,27 +77,25 @@ const MiniPlayer = () => {
         setAudioUrl('');
     }, [currentSong?.id]);
 
-    // Fetch Song URL — handles BOTH standard and YouTube songs
+    // Fetch Song URL — for standard songs AND YouTube fallback
     useEffect(() => {
         const fetchSongUrl = async () => {
             if (!currentSong) return;
-            setAudioUrl('');
 
-            // YouTube Music → Use /stream endpoint (works for ALL songs including Pakistani, regional, etc.)
-            if (isYoutube && currentSong.youtubeId) {
-                // If song already has a valid stream URL (from playlist/album), use it directly
-                if (currentSong.url && currentSong.url.includes('/stream?videoId=')) {
-                    setAudioUrl(currentSong.url);
-                    return;
-                }
-                // Otherwise, construct the stream URL
-                const streamUrl = `${YT_API}/stream?videoId=${currentSong.youtubeId}`;
+            // YouTube fallback mode — use /stream endpoint
+            if (isYoutube && ytFallback && currentSong.youtubeId) {
+                const streamUrl = (currentSong.url && currentSong.url.includes('/stream?videoId='))
+                    ? currentSong.url
+                    : `${YT_API}/stream?videoId=${currentSong.youtubeId}`;
                 setAudioUrl(streamUrl);
-                setLoadingStream(true);
                 return;
             }
 
+            // YouTube primary mode — ReactPlayer handles it, no URL needed
+            if (isYoutube) return;
+
             // Standard (Groovia/JioSaavn) songs
+            setAudioUrl('');
             try {
                 if (currentSong.type === 'local' || (currentSong.url && (currentSong.url.startsWith('http') || currentSong.url.startsWith('blob:')))) {
                     setAudioUrl(currentSong.url || '');
@@ -116,28 +122,34 @@ const MiniPlayer = () => {
         };
 
         fetchSongUrl();
-    }, [currentSong?.id, isYoutube]);
+    }, [currentSong?.id, isYoutube, ytFallback]);
 
-    // Seek Handler — unified for all songs
+    // Seek Handler
     useEffect(() => {
         if (seekTime !== null) {
-            if (audioRef.current) {
+            if (useReactPlayer && playerRef.current) {
+                if (typeof playerRef.current.currentTime !== 'undefined') {
+                    playerRef.current.currentTime = seekTime;
+                } else if (typeof playerRef.current.seekTo === 'function') {
+                    playerRef.current.seekTo(seekTime, 'seconds');
+                }
+            } else if (audioRef.current) {
                 audioRef.current.currentTime = seekTime;
             }
             useMusicStore.setState({ seekTime: null });
         }
-    }, [seekTime]);
+    }, [seekTime, useReactPlayer]);
 
     // Sync Volume
     useEffect(() => {
-        if (audioRef.current) {
+        if (!useReactPlayer && audioRef.current) {
             audioRef.current.volume = volume / 100;
         }
-    }, [volume]);
+    }, [volume, useReactPlayer]);
 
-    // Sync Play/Pause
+    // Sync Play/Pause for Audio element
     useEffect(() => {
-        if (audioRef.current && audioUrl && !error) {
+        if (!useReactPlayer && audioRef.current && audioUrl && !error) {
             if (isPlayingStore) {
                 audioRef.current.play().then(() => setIsPlaying(true)).catch(() => { });
             } else {
@@ -145,7 +157,7 @@ const MiniPlayer = () => {
                 setIsPlaying(false);
             }
         }
-    }, [isPlayingStore, audioUrl, error]);
+    }, [isPlayingStore, audioUrl, useReactPlayer, error]);
 
     const togglePlay = () => {
         const store = useMusicStore.getState();
@@ -167,6 +179,50 @@ const MiniPlayer = () => {
 
     return (
         <>
+            {/* ReactPlayer for YouTube - PRIMARY (Hidden) */}
+            {useReactPlayer && currentSong?.youtubeId && (
+                <div style={{ position: 'fixed', bottom: 0, right: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', zIndex: -5 }}>
+                    <ReactPlayer
+                        key={currentSong?.id || "yt-player"}
+                        ref={playerRef}
+                        src={`https://www.youtube.com/watch?v=${currentSong.youtubeId}&autoplay=1&controls=0&rel=0&showinfo=0&modestbranding=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
+                        playing={isPlayingStore}
+                        volume={volume / 100}
+                        muted={false}
+                        width="100%"
+                        height="100%"
+                        controls={false}
+                        onTimeUpdate={(e: any) => {
+                            const time = e.currentTarget.currentTime;
+                            if (time !== undefined && isFinite(time)) {
+                                setCurrentTime(time);
+                                setCurrentTimeStore(time);
+                            }
+                        }}
+                        onLoadedMetadata={(e: any) => {
+                            const dur = e.currentTarget.duration;
+                            if (dur !== undefined && isFinite(dur)) {
+                                setDuration(dur);
+                                setDurationStore(dur);
+                            }
+                        }}
+                        onEnded={() => {
+                            if (repeatMode === 'one') {
+                                if (playerRef.current) playerRef.current.currentTime = 0;
+                            } else {
+                                playNext(true);
+                            }
+                        }}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onError={(e: any) => {
+                            console.warn("ReactPlayer failed, switching to direct stream fallback:", e);
+                            setYtFallback(true); // Auto-switch to /stream endpoint
+                        }}
+                    />
+                </div>
+            )}
+
             {/* Mobile Mini Player */}
             {!isPlayerPage && (
                 <div className="md:hidden fixed bottom-[4.5rem] left-0 right-0 bg-zinc-900 rounded-t-[2rem] border-t border-white/5 shadow-[0_-8px_20px_rgba(0,0,0,0.6)] z-40 overflow-hidden">
@@ -202,11 +258,9 @@ const MiniPlayer = () => {
                             <button
                                 onClick={(e) => { e.stopPropagation(); togglePlay(); }}
                                 className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-black transition-transform active:scale-95 shadow-lg"
-                                disabled={!audioUrl && !error}
+                                disabled={!useReactPlayer && !audioUrl && !error}
                             >
-                                {loadingStream && !duration ? (
-                                    <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                                ) : isPlayingStore ? <BiPause size={22} /> : <BiPlay size={24} className="ml-0.5" />}
+                                {isPlayingStore ? <BiPause size={22} /> : <BiPlay size={24} className="ml-0.5" />}
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); playNext(false); }}
@@ -234,7 +288,9 @@ const MiniPlayer = () => {
                         const percent = (e.clientX - rect.left) / rect.width;
                         const time = percent * duration;
                         setCurrentTime(time);
-                        if (audioRef.current) {
+                        if (useReactPlayer && playerRef.current) {
+                            playerRef.current.currentTime = time;
+                        } else if (audioRef.current) {
                             audioRef.current.currentTime = time;
                         }
                     }}>
@@ -273,10 +329,8 @@ const MiniPlayer = () => {
                                 <BiSkipPrevious size={24} className="text-white" />
                             </button>
                             <button onClick={togglePlay} className="p-2 rounded-full bg-white hover:scale-105 transition-transform"
-                                disabled={!audioUrl && !error} >
-                                {loadingStream && !duration ? (
-                                    <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                                ) : isPlayingStore ? <BiPause size={24} className="text-black" /> : <BiPlay size={24} className="text-black ml-0.5" />}
+                                disabled={!useReactPlayer && !audioUrl && !error} >
+                                {isPlayingStore ? <BiPause size={24} className="text-black" /> : <BiPlay size={24} className="text-black ml-0.5" />}
                             </button>
                             <button onClick={() => playNext(false)} className="p-2 hover:bg-zinc-800 rounded">
                                 <BiSkipNext size={24} className="text-white" />
@@ -296,7 +350,8 @@ const MiniPlayer = () => {
                                 value={currentTime}
                                 onChange={(e) => {
                                     const val = Number(e.target.value);
-                                    if (audioRef.current) audioRef.current.currentTime = val;
+                                    if (useReactPlayer && playerRef.current) playerRef.current.currentTime = val;
+                                    else if (audioRef.current) audioRef.current.currentTime = val;
                                     setCurrentTime(val);
                                 }}
                                 className="flex-1 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -324,12 +379,14 @@ const MiniPlayer = () => {
                 </div>
             </div>
 
-            {/* Unified Audio Element — plays EVERYTHING (Groovia + YouTube) */}
-            {audioUrl && (
+            {/* Audio element — for standard songs AND YouTube fallback */}
+            {!useReactPlayer && audioUrl && (
                 <audio
                     key={currentSong?.id || 'audio-player'}
                     ref={audioRef}
                     src={audioUrl}
+                    autoPlay
+                    preload="auto"
                     onTimeUpdate={(e) => {
                         const time = e.currentTarget.currentTime;
                         setCurrentTime(time);
@@ -339,14 +396,6 @@ const MiniPlayer = () => {
                         const dur = e.currentTarget.duration;
                         setDuration(dur);
                         setDurationStore(dur);
-                        setLoadingStream(false);
-                    }}
-                    onCanPlay={() => {
-                        setLoadingStream(false);
-                        // Auto-play when stream is ready
-                        if (isPlayingStore && audioRef.current) {
-                            audioRef.current.play().catch(() => { });
-                        }
                     }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
@@ -363,10 +412,7 @@ const MiniPlayer = () => {
                     onError={(e) => {
                         console.error('Audio error:', e);
                         setError(true);
-                        setLoadingStream(false);
                     }}
-                    autoPlay
-                    preload="auto"
                 />
             )}
         </>

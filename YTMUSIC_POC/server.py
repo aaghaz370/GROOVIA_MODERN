@@ -43,9 +43,6 @@ def get_watch_playlist(videoId: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/album")
 def get_album(browseId: str):
     try:
