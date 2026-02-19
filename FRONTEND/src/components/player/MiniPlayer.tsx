@@ -82,12 +82,24 @@ const MiniPlayer = () => {
         const fetchSongUrl = async () => {
             if (!currentSong) return;
 
-            // YouTube fallback mode — use /stream endpoint
+            // YouTube fallback mode — fetch direct stream URL from backend
             if (isYoutube && ytFallback && currentSong.youtubeId) {
-                const streamUrl = (currentSong.url && currentSong.url.includes('/stream?videoId='))
-                    ? currentSong.url
-                    : `${YT_API}/stream?videoId=${currentSong.youtubeId}`;
-                setAudioUrl(streamUrl);
+                try {
+                    // Use /stream-url which returns JSON with direct CDN URL
+                    const res = await fetch(`${YT_API}/stream-url?videoId=${currentSong.youtubeId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.url) {
+                            setAudioUrl(data.url);
+                            return;
+                        }
+                    }
+                    // If /stream-url fails, try /stream redirect as last resort
+                    setAudioUrl(`${YT_API}/stream?videoId=${currentSong.youtubeId}`);
+                } catch (err) {
+                    console.error('Stream fallback error:', err);
+                    setError(true);
+                }
                 return;
             }
 
