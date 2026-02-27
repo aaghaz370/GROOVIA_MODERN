@@ -4,6 +4,7 @@ import QuickPicks from '@/components/yt-music/QuickPicks';
 import AlbumsForYou from '@/components/yt-music/AlbumsForYou';
 import LongListening from '@/components/yt-music/LongListening';
 import FeaturedPlaylists from '@/components/yt-music/FeaturedPlaylists';
+import TrendingCharts from '@/components/yt-music/TrendingCharts';
 
 export default function YTMusicPage() {
     return (
@@ -19,6 +20,9 @@ export default function YTMusicPage() {
 
             {/* Section 4: Featured Playlists */}
             <FeaturedPlaylists />
+
+            {/* Section 5: Trending Pulse — India Charts */}
+            <TrendingCharts />
         </div>
     );
 }

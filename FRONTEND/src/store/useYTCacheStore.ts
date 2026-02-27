@@ -5,6 +5,7 @@ interface YTCacheState {
     albumsForYou: any[];
     longListening: any[];
     featuredPlaylists: any[];
+    trendingCharts: any[]; // <-- new
     isPrefetching: boolean;
     hasPrefetched: boolean;
     prefetchAll: () => Promise<void>;
@@ -15,6 +16,7 @@ export const useYTCacheStore = create<YTCacheState>((set, get) => ({
     albumsForYou: [],
     longListening: [],
     featuredPlaylists: [],
+    trendingCharts: [],
     isPrefetching: false,
     hasPrefetched: false,
 
@@ -100,9 +102,26 @@ export const useYTCacheStore = create<YTCacheState>((set, get) => ({
                 return unique.sort(() => 0.5 - Math.random()).slice(0, 10);
             });
 
+            // 5. Trending Charts (India)
+            const chartsPromise = fetch(`${apiUrl}/charts?country=IN`)
+                .then(res => res.json())
+                .then(data => {
+                    const songs = data?.data?.songs || [];
+                    // Normalize track format from playlist (has .title/.videoId/.thumbnails/.artists)
+                    return songs.slice(0, 20).map((t: any) => ({
+                        videoId: t.videoId,
+                        title: t.title,
+                        thumbnails: t.thumbnails || [],
+                        artists: t.artists || [],
+                        album: t.album || null,
+                        duration: t.duration || '',
+                    }));
+                })
+                .catch(() => []);
+
             // Await all and update state
-            const [quickPicks, albumsForYou, longListening, featuredPlaylists] = await Promise.all([
-                qpPromise, afyPromise, llPromise, fpPromise
+            const [quickPicks, albumsForYou, longListening, featuredPlaylists, trendingCharts] = await Promise.all([
+                qpPromise, afyPromise, llPromise, fpPromise, chartsPromise
             ]);
 
             set({
@@ -110,6 +129,7 @@ export const useYTCacheStore = create<YTCacheState>((set, get) => ({
                 albumsForYou,
                 longListening,
                 featuredPlaylists,
+                trendingCharts,
                 isPrefetching: false,
                 hasPrefetched: true
             });
