@@ -7,42 +7,18 @@ import { BiPlay, BiDotsVerticalRounded } from 'react-icons/bi';
 import { RiPlayListFill } from 'react-icons/ri';
 import he from 'he';
 
+import { useYTCacheStore } from '@/store/useYTCacheStore';
+
 const FeaturedPlaylists = () => {
     const router = useRouter();
-    const [playlists, setPlaylists] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const playlists = useYTCacheStore((state) => state.featuredPlaylists);
+    const isPrefetching = useYTCacheStore((state) => state.isPrefetching);
+    const hasPrefetched = useYTCacheStore((state) => state.hasPrefetched);
 
-    useEffect(() => {
-        const fetchPlaylists = async () => {
-            try {
-                setLoading(true);
-                // Diverse Playlist Queries
-                const queries = ['Top Hindi Playlist', 'Romantic Bollywood Playlist', 'Party Hits Hindi Playlist', 'Workout Hindi Songs Playlist', 'Travel India Playlist', 'Focus Lofi Hindi', '90s Bollywood Hits'];
+    const loading = !hasPrefetched || (playlists.length === 0 && isPrefetching);
 
-                const results = await Promise.all(
-                    queries.map(q =>
-                        fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/search?query=${encodeURIComponent(q)}&filter=playlists&limit=10`)
-                            .then(res => res.json())
-                            .then(data => data.data || [])
-                            .catch(() => [])
-                    )
-                );
 
-                const allItems = results.flat();
-                // Deduplicate by browseId
-                const unique = Array.from(new Map(allItems.map(item => [item.browseId, item])).values());
-
-                // Shuffle and limit to 10 as requested
-                setPlaylists(unique.sort(() => 0.5 - Math.random()).slice(0, 10));
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchPlaylists();
-    }, []);
 
     const handleScroll = (direction: 'left' | 'right') => {
         if (scrollRef.current) {

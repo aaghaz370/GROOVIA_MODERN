@@ -6,67 +6,19 @@ import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
 
 import { useMusicStore } from '@/store/useMusicStore';
+import { useYTCacheStore } from '@/store/useYTCacheStore';
 
 interface LongListeningProps { } // No props needed anymore
 
 const LongListening = () => {
-    const [songs, setSongs] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const songs = useYTCacheStore((state) => state.longListening);
+    const isPrefetching = useYTCacheStore((state) => state.isPrefetching);
+    const hasPrefetched = useYTCacheStore((state) => state.hasPrefetched);
 
-    useEffect(() => {
-        const fetchSongs = async () => {
-            try {
-                setLoading(true);
-                // Queries: Videos usually have long durations (Mashups/Jukeboxes)
-                const queries = ['Bollywood Mashup 2024', 'Hindi Nonstop Jukebox', 'Best of Arijit Singh Jukebox', 'Lofi Hindi Mashup'];
+    const loading = !hasPrefetched || (songs.length === 0 && isPrefetching);
 
-                const results = await Promise.all(
-                    queries.map(q =>
-                        // Explicitly request videos to get duration-heavy content
-                        fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/search?query=${encodeURIComponent(q)}&filter=videos&limit=10`)
-                            .then(res => {
-                                if (!res.ok) throw new Error('Fetch failed');
-                                return res.json();
-                            })
-                            .then(data => data.data || [])
-                            .catch(err => {
-                                console.warn(`Query ${q} failed:`, err);
-                                return [];
-                            })
-                    )
-                );
 
-                const allItems = results.flat();
-
-                const uniqueItems = Array.from(new Map(allItems.map(item => [item.videoId, item])).values());
-
-                // Filter: relaxed to 3 mins (180s) to ensure we get content
-                const longItems = uniqueItems.filter((item: any) => {
-                    if (!item.duration || !item.videoId) return false;
-                    const parts = item.duration.split(':').map(Number);
-                    let seconds = 0;
-                    if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-                    else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
-                    else return false; // Single part (seconds only? rare)
-
-                    return seconds > 180;
-                });
-
-                if (longItems.length > 0) {
-                    setSongs(longItems.sort(() => 0.5 - Math.random()).slice(0, 16));
-                } else {
-                    console.log("No long items found.");
-                    setSongs([]);
-                }
-            } catch (err) {
-                console.error("Error in LongListening:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchSongs();
-    }, []);
 
     const playSong = useMusicStore((state) => state.playSong);
     const setQueue = useMusicStore((state) => state.setQueue);

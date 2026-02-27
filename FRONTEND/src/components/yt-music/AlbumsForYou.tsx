@@ -6,43 +6,18 @@ import { BiPlay, BiAlbum } from 'react-icons/bi';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
 
+import { useYTCacheStore } from '@/store/useYTCacheStore';
+
 const AlbumsForYou = () => {
     const router = useRouter();
-    const [albums, setAlbums] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const albums = useYTCacheStore((state) => state.albumsForYou);
+    const isPrefetching = useYTCacheStore((state) => state.isPrefetching);
+    const hasPrefetched = useYTCacheStore((state) => state.hasPrefetched);
 
-    useEffect(() => {
-        const fetchAlbums = async () => {
-            try {
-                setLoading(true);
-                // Broad queries to simulate personalization/variety as requested
-                const queries = ['Bollywood Hit Albums', 'Arijit Singh Best Albums', 'Latest Hindi Albums', 'Top Global Albums', 'Lofi Hip Hop Albums'];
+    const loading = !hasPrefetched || (albums.length === 0 && isPrefetching);
 
-                // Fetch multiple to ensure variety and robustness
-                const results = await Promise.all(
-                    queries.map(q =>
-                        fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/search?query=${encodeURIComponent(q)}&filter=albums&limit=10`)
-                            .then(res => res.json())
-                            .then(data => data.data || [])
-                            .catch(() => [])
-                    )
-                );
 
-                const allAlbums = results.flat();
-                // Deduplicate by browseId
-                const unique = Array.from(new Map(allAlbums.map(item => [item.browseId, item])).values());
-
-                // Shuffle and slice to 15 (User suggested 10, but 15 allows 3 scrolls on desktop, better UX)
-                setAlbums(unique.sort(() => 0.5 - Math.random()).slice(0, 15));
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchAlbums();
-    }, []);
 
     const handleScroll = (direction: 'left' | 'right') => {
         if (scrollRef.current) {

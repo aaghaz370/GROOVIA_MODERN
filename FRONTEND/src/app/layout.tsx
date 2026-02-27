@@ -5,6 +5,7 @@ import MobileNav from '@/components/layout/MobileNav';
 import MiniPlayer from '@/components/player/MiniPlayer';
 import AuthProvider from '@/components/auth/AuthProvider';
 import Footer from '@/components/layout/Footer';
+import YTPrefetcher from '@/components/yt-music/YTPrefetcher';
 
 export const metadata: Metadata = {
   title: 'Groovia - Modern Music Streaming',
@@ -37,6 +38,9 @@ export default function RootLayout({
 
         {/* Mini Player */}
         <MiniPlayer />
+
+        {/* Global YT Music Prefetcher */}
+        <YTPrefetcher />
       </body>
     </html>
   );

@@ -6,55 +6,19 @@ import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import he from 'he';
 
 import { useMusicStore } from '@/store/useMusicStore';
+import { useYTCacheStore } from '@/store/useYTCacheStore';
 
 interface QuickPicksProps { } // No props needed anymore
 
 const QuickPicks = () => {
-    const [songs, setSongs] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const songs = useYTCacheStore((state) => state.quickPicks);
+    const isPrefetching = useYTCacheStore((state) => state.isPrefetching);
+    const hasPrefetched = useYTCacheStore((state) => state.hasPrefetched);
 
-    // Fetch diverse songs to simulate Quick Picks
-    useEffect(() => {
-        const fetchSongs = async () => {
-            try {
-                setLoading(true);
-                // Combined queries to get individual songs
-                const queries = ['Bollywood Top 50', 'Arijit Singh Best', 'Global Top 50', 'Trending Reels', 'Punjabi Top Hits'];
+    const loading = !hasPrefetched || (songs.length === 0 && isPrefetching);
 
-                // Fetch all in parallel
-                // Use limit=10 per query to get enough candidates
-                const results = await Promise.all(
-                    queries.map(q =>
-                        fetch(`${process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000'}/search?query=${encodeURIComponent(q)}&filter=songs&limit=10`)
-                            .then(res => res.json())
-                            .then(data => data.data || [])
-                            .catch(() => [])
-                    )
-                );
 
-                const allSongs = results.flat();
-
-                // Remove duplicates by videoId
-                const uniqueSongsMap = new Map();
-                allSongs.forEach((item: any) => {
-                    if (item.videoId) uniqueSongsMap.set(item.videoId, item);
-                });
-
-                const uniqueSongs = Array.from(uniqueSongsMap.values());
-
-                // Shuffle and Slice to 16
-                const shuffled = uniqueSongs.sort(() => 0.5 - Math.random());
-                setSongs(shuffled.slice(0, 16));
-
-            } catch (err) {
-                console.error("Error fetching Quick Picks:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchSongs();
-    }, []);
 
     const playSong = useMusicStore((state) => state.playSong);
     const setQueue = useMusicStore((state) => state.setQueue);
