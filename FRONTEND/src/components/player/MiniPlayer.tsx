@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { api } from '@/lib/api';
 import SongImage from '@/components/ui/SongImage';
 import { getImageUrl as getSafeImageUrl } from '@/lib/imageUtils';
+import { YT_API_URL } from '@/lib/config';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import he from 'he';
@@ -22,9 +23,6 @@ import {
 } from 'react-icons/bi';
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
 
-// Dynamically import ReactPlayer
-// Using main import as v3 structure uses sub-exports but main handles detection
-const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
 
 const MiniPlayer = () => {
     const router = useRouter();
@@ -38,8 +36,6 @@ const MiniPlayer = () => {
 
     // Refs
     const audioRef = useRef<HTMLAudioElement>(null);
-    const silentAudioRef = useRef<HTMLAudioElement>(null);
-    const playerRef = useRef<any>(null); // ReactPlayer v3 ref (HTMLMediaElement-like)
 
     const currentSong = useMusicStore((state) => state.currentSong);
     const playNext = useMusicStore((state) => state.playNext);
@@ -67,23 +63,23 @@ const MiniPlayer = () => {
         setError(false);
         setIsPlaying(true); // Assume play will start
 
-        // FORCE STOP previous audio immediately to prevent overlap
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.removeAttribute('src'); // Cleanest way to detach
             audioRef.current.load(); // Force reset
         }
+    }, [currentSong?.id]);
 
-        if (isYoutube) {
-            setAudioUrl('');
-        }
-    }, [currentSong?.id, isYoutube]);
-
-    // Fetch Song URL (Standard)
+    // Fetch Song URL
     useEffect(() => {
         const fetchSongUrl = async () => {
-            if (!currentSong || isYoutube) return;
+            if (!currentSong) return;
             setAudioUrl(''); // Reset
+
+            if (isYoutube) {
+                setAudioUrl(`${YT_API_URL}/stream?videoId=${currentSong.youtubeId}`);
+                return;
+            }
 
             try {
                 if (currentSong.type === 'local' || (currentSong.url && (currentSong.url.startsWith('http') || currentSong.url.startsWith('blob:')))) {
@@ -116,30 +112,23 @@ const MiniPlayer = () => {
     // Seek Handler
     useEffect(() => {
         if (seekTime !== null) {
-            if (isYoutube && playerRef.current) {
-                // Optimize Seek: Use optimized buffering strategy
-                if (typeof playerRef.current.currentTime !== 'undefined') {
-                    playerRef.current.currentTime = seekTime;
-                } else if (typeof playerRef.current.seekTo === 'function') {
-                    playerRef.current.seekTo(seekTime, 'seconds');
-                }
-            } else if (!isYoutube && audioRef.current) {
+            if (audioRef.current) {
                 audioRef.current.currentTime = seekTime;
             }
             useMusicStore.setState({ seekTime: null });
         }
-    }, [seekTime, isYoutube]);
+    }, [seekTime]);
 
-    // Sync Volume (Standard Audio needs explicit update)
+    // Sync Volume
     useEffect(() => {
-        if (!isYoutube && audioRef.current) {
+        if (audioRef.current) {
             audioRef.current.volume = volume / 100;
         }
-    }, [volume, isYoutube]);
+    }, [volume]);
 
-    // Sync Play/Pause for Standard Audio
+    // Sync Play/Pause
     useEffect(() => {
-        if (!isYoutube && audioRef.current && audioUrl && !error) {
+        if (audioRef.current && audioUrl && !error) {
             if (isPlayingStore) {
                 audioRef.current.play().then(() => setIsPlaying(true)).catch(() => { });
             } else {
@@ -147,18 +136,7 @@ const MiniPlayer = () => {
                 setIsPlaying(false);
             }
         }
-    }, [isPlayingStore, audioUrl, isYoutube, error]);
-
-    // Force Wake Lock for YouTube iframe (Silent Audio Hack)
-    useEffect(() => {
-        if (isYoutube && silentAudioRef.current) {
-            if (isPlayingStore) {
-                silentAudioRef.current.play().catch(() => { });
-            } else {
-                silentAudioRef.current.pause();
-            }
-        }
-    }, [isPlayingStore, isYoutube]);
+    }, [isPlayingStore, audioUrl, error]);
 
     const togglePlay = () => {
         const store = useMusicStore.getState();
@@ -215,47 +193,6 @@ const MiniPlayer = () => {
 
     return (
         <>
-            {/* ReactPlayer for YouTube - Hidden */}
-            {isYoutube && currentSong?.youtubeId && (
-                <div style={{ position: 'fixed', bottom: 0, right: 0, width: '1px', height: '1px', opacity: 0.01, pointerEvents: 'none', zIndex: -5 }}>
-                    <ReactPlayer
-                        key={currentSong?.id || "yt-player"}
-                        ref={playerRef}
-                        src={`https://www.youtube.com/watch?v=${currentSong.youtubeId}&autoplay=1&controls=0&rel=0&showinfo=0&modestbranding=1&playsinline=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}`}
-                        playing={isPlayingStore}
-                        volume={volume / 100}
-                        muted={false}
-                        width="100%"
-                        height="100%"
-                        controls={false}
-                        onTimeUpdate={(e: any) => {
-                            const time = e.currentTarget.currentTime;
-                            if (time !== undefined && isFinite(time)) {
-                                setCurrentTime(time);
-                                setCurrentTimeStore(time);
-                            }
-                        }}
-                        onLoadedMetadata={(e: any) => {
-                            const dur = e.currentTarget.duration;
-                            if (dur !== undefined && isFinite(dur)) {
-                                setDuration(dur);
-                                setDurationStore(dur);
-                            }
-                        }}
-                        onEnded={() => {
-                            if (repeatMode === 'one') {
-                                if (playerRef.current) playerRef.current.currentTime = 0;
-                            } else {
-                                playNext(true);
-                            }
-                        }}
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
-                        onError={(e: any) => console.error("ReactPlayer Error:", e)}
-                    />
-                </div>
-            )}
-
             {/* Mobile Mini Player */}
             {!isPlayerPage && (
                 <div className="md:hidden fixed bottom-[4.5rem] left-0 right-0 bg-zinc-900 rounded-t-[2rem] border-t border-white/5 shadow-[0_-8px_20px_rgba(0,0,0,0.6)] z-40 overflow-hidden">
@@ -291,7 +228,7 @@ const MiniPlayer = () => {
                             <button
                                 onClick={(e) => { e.stopPropagation(); togglePlay(); }}
                                 className="w-10 h-10 flex items-center justify-center bg-white rounded-full text-black transition-transform active:scale-95 shadow-lg"
-                                disabled={!isYoutube && !audioUrl && !error}
+                                disabled={!audioUrl && !error}
                             >
                                 {isPlayingStore ? <BiPause size={22} /> : <BiPlay size={24} className="ml-0.5" />}
                             </button>
@@ -321,10 +258,7 @@ const MiniPlayer = () => {
                         const percent = (e.clientX - rect.left) / rect.width;
                         const time = percent * duration;
                         setCurrentTime(time);
-                        if (isYoutube && playerRef.current) {
-                            // v3 set currentTime
-                            playerRef.current.currentTime = time;
-                        } else if (audioRef.current) {
+                        if (audioRef.current) {
                             audioRef.current.currentTime = time;
                         }
                     }}>
@@ -363,7 +297,7 @@ const MiniPlayer = () => {
                                 <BiSkipPrevious size={24} className="text-white" />
                             </button>
                             <button onClick={togglePlay} className="p-2 rounded-full bg-white hover:scale-105 transition-transform"
-                                disabled={!isYoutube && !audioUrl && !error} >
+                                disabled={!audioUrl && !error} >
                                 {isPlayingStore ? <BiPause size={24} className="text-black" /> : <BiPlay size={24} className="text-black ml-0.5" />}
                             </button>
                             <button onClick={() => playNext(false)} className="p-2 hover:bg-zinc-800 rounded">
@@ -384,8 +318,7 @@ const MiniPlayer = () => {
                                 value={currentTime}
                                 onChange={(e) => {
                                     const val = Number(e.target.value);
-                                    if (isYoutube && playerRef.current) playerRef.current.currentTime = val;
-                                    else if (audioRef.current) audioRef.current.currentTime = val;
+                                    if (audioRef.current) audioRef.current.currentTime = val;
                                     setCurrentTime(val);
                                 }}
                                 className="flex-1 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -413,8 +346,8 @@ const MiniPlayer = () => {
                 </div>
             </div>
 
-            {/* Standard Audio */}
-            {!isYoutube && audioUrl && (
+            {/* Standard Audio Player - Now handles both Saavn AND Youtube streaming */}
+            {audioUrl && (
                 <audio
                     key={currentSong?.id || 'audio-player'}
                     ref={audioRef}
@@ -445,16 +378,6 @@ const MiniPlayer = () => {
                         console.error('Audio error:', e);
                         setError(true);
                     }}
-                />
-            )}
-
-            {/* Silent Audio Trick for Background YT Iframe */}
-            {isYoutube && (
-                <audio
-                    ref={silentAudioRef}
-                    loop
-                    playsInline
-                    src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"
                 />
             )}
         </>

@@ -7,6 +7,7 @@ import subprocess
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
+import yt_dlp
 
 app = FastAPI()
 
@@ -112,14 +113,19 @@ async def get_album(browseId: str):
 @app.get("/stream")
 async def stream_audio(videoId: str):
     try:
+        def extract():
+            ydl_opts = {
+                'format': 'bestaudio[ext=m4a]/bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': False
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={videoId}", download=False)
+                return info['url']
+        
         loop = asyncio.get_event_loop()
-        url = await loop.run_in_executor(
-            executor,
-            lambda: subprocess.check_output(
-                ["yt-dlp", "-f", "bestaudio[ext=m4a]/bestaudio", "-g", f"https://www.youtube.com/watch?v={videoId}"],
-                timeout=15
-            ).decode("utf-8").strip()
-        )
+        url = await loop.run_in_executor(executor, extract)
         return RedirectResponse(url=url)
     except Exception as e:
         print(f"Error streaming {videoId}: {e}")
