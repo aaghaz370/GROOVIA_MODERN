@@ -64,13 +64,23 @@ COOKIE_FILE_PATH = None
 yt_cookies_b64 = os.environ.get("YT_COOKIES_B64", "")
 if yt_cookies_b64:
     try:
-        cookie_content = base64.b64decode(yt_cookies_b64).decode("utf-8")
+        cookie_raw = base64.b64decode(yt_cookies_b64).decode("utf-8")
+        # Filter out authentication cookies!
+        # If we use a logged-in cookie on a datacenter IP, YouTube often serves
+        # DRM-restricted formats or blocks the request ("Format not available").
+        # Clean, anonymous session cookies (VISITOR_INFO1_LIVE, CONSISTENCY) 
+        # are enough to bypass 403 Bot Protection.
+        auth_keys = ['LOGIN_INFO', 'SID', 'HSID', 'SSID', 'APISID', 'SAPISID']
+        lines = cookie_raw.split('\n')
+        clean_lines = [l for l in lines if not any(k in l for k in auth_keys)]
+        cookie_content = '\n'.join(clean_lines)
+        
         tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
         tmp.write(cookie_content)
         tmp.flush()
         tmp.close()
         COOKIE_FILE_PATH = tmp.name
-        print(f"[cookies] Loaded YouTube cookies from env var into {COOKIE_FILE_PATH}")
+        print(f"[cookies] Loaded ANONYMIZED YouTube cookies from env var into {COOKIE_FILE_PATH}")
     except Exception as e:
         print(f"[cookies] Failed to load YT_COOKIES_B64: {e}")
 else:
