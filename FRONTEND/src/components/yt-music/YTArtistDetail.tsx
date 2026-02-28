@@ -78,6 +78,8 @@ export default function YTArtistDetail({ data, channelId }: { data: any; channel
     const [showBio, setShowBio] = useState(false);
     const [loadingRadio, setLoadingRadio] = useState(false);
     const [showAllSongs, setShowAllSongs] = useState(false);
+    const [moreSongs, setMoreSongs] = useState<any[]>([]);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     const albumsRef = useRef<HTMLDivElement>(null);
     const singlesRef = useRef<HTMLDivElement>(null);
@@ -144,6 +146,24 @@ export default function YTArtistDetail({ data, channelId }: { data: any; channel
         playSong(mappedSongs[idx] || mappedSongs[0]);
     };
 
+    // ── Show More Songs — lazy fetch (get_artist only returns 5) ──────────────
+    const handleShowMore = async () => {
+        if (showAllSongs) { setShowAllSongs(false); return; }
+        if (moreSongs.length > 0) { setShowAllSongs(true); return; }
+        setLoadingMore(true);
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/search?query=${encodeURIComponent(name + ' songs')}&filter=songs&limit=15`);
+            const json = await res.json();
+            const extra = (json?.data || []).filter((t: any) => t.videoId && !songs.some((s: any) => s.videoId === t.videoId)).map((s: any) => mapYTSong(s, name));
+            setMoreSongs(extra.slice(0, 10));
+        } catch (e) { console.error(e); }
+        setShowAllSongs(true);
+        setLoadingMore(false);
+    };
+
+    const allDisplaySongs = showAllSongs ? [...mappedSongs, ...moreSongs] : mappedSongs;
+
     // ────────────────────────────────────────────────────────────────────────
     // MOBILE LAYOUT
     // ────────────────────────────────────────────────────────────────────────
@@ -204,8 +224,12 @@ export default function YTArtistDetail({ data, channelId }: { data: any; channel
                         <section>
                             <h2 className="text-xl font-bold text-white mb-3">Top Songs</h2>
                             <div className="space-y-1">
-                                {mappedSongs.slice(0, showAllSongs ? mappedSongs.length : 5).map((song: any, i: number) => (
-                                    <div key={song.id} onClick={() => handlePlaySong(songs[i])} className="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-xl active:bg-white/5 transition-colors cursor-pointer">
+                                {allDisplaySongs.map((song: any, i: number) => (
+                                    <div key={song.id} onClick={() => {
+                                        const origIdx = songs.findIndex((s: any) => s.videoId === song.id);
+                                        if (origIdx >= 0) handlePlaySong(songs[origIdx]);
+                                        else { setQueue(allDisplaySongs); playSong(song); }
+                                    }} className="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-xl active:bg-white/5 transition-colors cursor-pointer">
                                         <div className="relative w-12 h-12 rounded-md overflow-hidden flex-shrink-0 bg-zinc-800">
                                             <YTImg src={bestUrl(song.image?.map((t: any) => ({ url: t.url, width: 200 })))} alt={song.name} className="w-full h-full object-cover" />
                                         </div>
@@ -216,9 +240,13 @@ export default function YTArtistDetail({ data, channelId }: { data: any; channel
                                         <button className="text-gray-600 p-1" onClick={(e) => e.stopPropagation()}><BiDotsVerticalRounded size={20} /></button>
                                     </div>
                                 ))}
-                                {mappedSongs.length > 5 && (
-                                    <button onClick={() => setShowAllSongs(!showAllSongs)} className="w-full py-2.5 text-center text-sm text-white font-bold uppercase tracking-wider border border-zinc-800 rounded-full mt-2 hover:bg-zinc-900">
-                                        {showAllSongs ? 'Show Less' : 'Show All'}
+                                {mappedSongs.length > 0 && (
+                                    <button
+                                        onClick={handleShowMore}
+                                        disabled={loadingMore}
+                                        className="w-full py-2.5 text-center text-sm text-white font-bold uppercase tracking-wider border border-zinc-800 rounded-full mt-2 hover:bg-zinc-900 transition-colors disabled:opacity-50"
+                                    >
+                                        {loadingMore ? 'Loading...' : showAllSongs ? 'Show Less' : 'Show More'}
                                     </button>
                                 )}
                             </div>
@@ -329,12 +357,16 @@ export default function YTArtistDetail({ data, channelId }: { data: any; channel
                         <section>
                             <h2 className="text-3xl font-bold text-white mb-6">Top Songs</h2>
                             <div className="flex flex-col">
-                                {mappedSongs.slice(0, showAllSongs ? mappedSongs.length : 5).map((song: any, i: number) => (
-                                    <div key={song.id} onClick={() => handlePlaySong(songs[i])} className="flex items-center gap-5 p-3 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors">
+                                {allDisplaySongs.map((song: any, i: number) => (
+                                    <div key={song.id} onClick={() => {
+                                        const origIdx = songs.findIndex((s: any) => s.videoId === song.id);
+                                        if (origIdx >= 0) handlePlaySong(songs[origIdx]);
+                                        else { setQueue(allDisplaySongs); playSong(song); }
+                                    }} className="flex items-center gap-5 p-3 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors">
                                         <span className="text-gray-500 w-5 text-center text-sm group-hover:hidden">{i + 1}</span>
                                         <BiPlay size={20} className="hidden group-hover:block text-white w-5" />
                                         <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-zinc-800">
-                                            <YTImg src={bestUrl(songs[i]?.thumbnails || [])} alt={song.name} className="w-full h-full object-cover" />
+                                            <YTImg src={bestUrl(songs[i]?.thumbnails || song.image?.map((t: any) => ({ url: t.url, width: 200 }))?.length ? (song.image?.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))[0]?.url || '') : bestUrl(songs[i]?.thumbnails || []))} alt={song.name} className="w-full h-full object-cover" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h3 className={`font-semibold text-base line-clamp-1 ${currentSong?.id === song.id ? 'text-purple-400' : 'text-white'}`}>{he.decode(song.name)}</h3>
@@ -348,9 +380,13 @@ export default function YTArtistDetail({ data, channelId }: { data: any; channel
                                         </div>
                                     </div>
                                 ))}
-                                {mappedSongs.length > 5 && (
-                                    <button onClick={() => setShowAllSongs(!showAllSongs)} className="mt-4 px-4 text-gray-400 hover:text-white text-sm font-bold uppercase tracking-wider text-left">
-                                        {showAllSongs ? 'Show Less' : 'Show All'}
+                                {mappedSongs.length > 0 && (
+                                    <button
+                                        onClick={handleShowMore}
+                                        disabled={loadingMore}
+                                        className="mt-4 px-4 text-gray-400 hover:text-white text-sm font-bold uppercase tracking-wider text-left disabled:opacity-50"
+                                    >
+                                        {loadingMore ? 'Loading...' : showAllSongs ? 'Show Less' : 'Show More'}
                                     </button>
                                 )}
                             </div>
@@ -458,10 +494,16 @@ import { forwardRef } from 'react';
 const HScrollSectionDesktop = forwardRef<HTMLDivElement, {
     title: string; items: any[]; onItemClick: (item: any) => void; labelKey?: string; labelPrefix?: string;
 }>(function HScrollSectionDesktop({ title, items, onItemClick, labelKey, labelPrefix }, ref) {
+    // Internal ref for scrolling (forward ref used for parent access)
+    const innerRef = ref as React.RefObject<HTMLDivElement>;
+    const scrollSection = (dir: 'left' | 'right') => {
+        innerRef?.current?.scrollBy({ left: dir === 'left' ? -480 : 480, behavior: 'smooth' });
+    };
     return (
         <section className="relative">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold text-white">{title}</h2>
+                <SectionNav onLeft={() => scrollSection('left')} onRight={() => scrollSection('right')} />
             </div>
             <div ref={ref} className="flex gap-6 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4">
                 {items.map((item: any, i: number) => (
