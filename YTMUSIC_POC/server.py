@@ -79,10 +79,13 @@ else:
 def get_ydl_opts(extra: dict = {}) -> dict:
     """Returns yt-dlp options, injecting cookie file if available."""
     opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[acodec!=none]/best',
+        # Most permissive format chain:
+        # 1. bestaudio (any audio-only, any container)
+        # 2. best (best combined video+audio — browser <audio> extracts audio)
+        # NO ext= restriction — avoids "format not available" for songs that only have combined streams
+        'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        # Permissive fallback chain — try m4a first, then webm audio, then anything audio, then best overall
         'extract_flat': False,
     }
     if COOKIE_FILE_PATH:
