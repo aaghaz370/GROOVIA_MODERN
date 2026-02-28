@@ -8,10 +8,11 @@ import SongImage from '@/components/ui/SongImage';
 import Link from 'next/link';
 import he from 'he';
 import {
-    BiPlay, BiPause, BiShuffle, BiChevronLeft, BiChevronRight, BiDotsVerticalRounded, BiChevronDown, BiChevronUp
+    BiPlay, BiPause, BiShuffle, BiChevronLeft, BiChevronRight, BiDotsVerticalRounded, BiChevronDown, BiChevronUp, BiUser
 } from 'react-icons/bi';
 import { HiOutlineHeart } from 'react-icons/hi';
-import { IoRadioOutline, IoShareOutline } from 'react-icons/io5';
+import { IoRadioOutline, IoShareOutline, IoMusicalNotesOutline } from 'react-icons/io5';
+import { useYTCacheStore } from '@/store/useYTCacheStore';
 
 interface ArtistData {
     id: string;
@@ -92,15 +93,63 @@ export default function ArtistPage() {
     const fetchArtistDetails = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/artists', {
-                params: { id: params.id }
-            });
-            console.log('Artist response:', response.data);
+            const id = params.id as string;
+            const isYTArtist = id?.startsWith('UC');
 
-            if (response.data?.data) {
-                setArtist(response.data.data);
+            if (isYTArtist) {
+                // Fetch from YT Music backend
+                const ytApiUrl = process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${ytApiUrl}/artist?channelId=${id}`);
+                if (!res.ok) throw new Error('YT artist fetch failed');
+                const json = await res.json();
+                const d = json?.data;
+                if (!d) { setArtist(null); return; }
+
+                // Map YT Music artist format → ArtistData
+                const mapThumb = (thumbs: any[]) =>
+                    (thumbs || []).map((t: any) => ({ quality: 'high', url: t.url }));
+                const mapSong = (s: any) => ({
+                    id: s.videoId,
+                    name: s.title,
+                    type: 'youtube',
+                    youtubeId: s.videoId,
+                    url: '',
+                    image: mapThumb(s.thumbnails || []),
+                    downloadUrl: [],
+                    artists: { primary: [{ name: s.artists?.[0] || d.name || '' }] },
+                    album: { name: s.album || '' },
+                    duration: '',
+                });
+                setArtist({
+                    id,
+                    name: d.name || '',
+                    image: mapThumb(d.thumbnails || []),
+                    followerCount: d.subscribers ? String(d.subscribers).replace(/[^0-9]/g, '') : undefined,
+                    fanCount: d.subscribers,
+                    bio: d.description || '',
+                    topSongs: (d.songs?.results || []).map(mapSong),
+                    topAlbums: (d.albums?.results || []).map((a: any) => ({
+                        id: a.browseId, name: a.title, year: a.year,
+                        image: mapThumb(a.thumbnails || []),
+                    })),
+                    singles: (d.singles?.results || []).map((s: any) => ({
+                        id: s.browseId, name: s.title, year: s.year,
+                        image: mapThumb(s.thumbnails || []),
+                    })),
+                    similarArtists: (d.related?.results || []).map((r: any) => ({
+                        id: r.browseId, name: r.title,
+                        image: mapThumb(r.thumbnails || []),
+                    })),
+                    featuredPlaylists: [],
+                });
             } else {
-                setArtist(null);
+                // JioSaavan artist
+                const response = await api.get('/artists', { params: { id } });
+                if (response.data?.data) {
+                    setArtist(response.data.data);
+                } else {
+                    setArtist(null);
+                }
             }
         } catch (error) {
             console.error('Error fetching artist:', error);
@@ -145,11 +194,8 @@ export default function ArtistPage() {
     }
 
     if (!artist) {
-        return (
-            <div className="fixed inset-0 bg-sidebar flex items-center justify-center">
-                <p className="text-gray-400">Artist not found</p>
-            </div>
-        );
+        const isYTId = (params.id as string)?.startsWith('UC');
+        return <ArtistNotFound isYTSource={isYTId} onBack={() => router.back()} />;
     }
 
     return (
@@ -700,5 +746,90 @@ export default function ArtistPage() {
                 )}
             </div>
         </>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ArtistNotFound — shown when artist data unavailable
+// ─────────────────────────────────────────────────────────────────────────────
+function ArtistNotFound({ isYTSource, onBack }: { isYTSource: boolean; onBack: () => void }) {
+    const router = useRouter();
+    const ytArtists = useYTCacheStore((state) => state.featuredArtists);
+
+    return (
+        <div className="min-h-screen bg-black -m-4 md:-m-8 flex flex-col">
+            {/* Purple gradient top bar */}
+            <div className="relative h-56 md:h-72 w-full flex-shrink-0 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-purple-800/40 to-black" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                    <div className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                        <BiUser size={48} className="text-purple-400" />
+                    </div>
+                    <div className="text-center px-6">
+                        <h1 className="text-2xl md:text-4xl font-bold text-white mb-2">Artist Not Found</h1>
+                        <p className="text-gray-400 text-sm md:text-base max-w-sm mx-auto">
+                            {isYTSource
+                                ? 'This artist\'s full profile page coming soon. Their songs are playable on YT Music tab.'
+                                : 'We couldn\'t load this artist\'s profile. They may not be available.'}
+                        </p>
+                    </div>
+                    <button
+                        onClick={onBack}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors border border-white/10"
+                    >
+                        <BiChevronLeft size={20} /> Go Back
+                    </button>
+                </div>
+            </div>
+
+            {/* Suggestions */}
+            <div className="flex-1 px-4 md:px-8 py-8">
+                {isYTSource && ytArtists.length > 0 ? (
+                    <>
+                        <h2 className="text-lg md:text-2xl font-bold text-white mb-5">Popular Artists on YT Music</h2>
+                        <div className="flex gap-4 md:gap-6 overflow-x-auto scrollbar-hide pb-4">
+                            {ytArtists.slice(0, 15).map((artist: any, idx: number) => {
+                                const thumb = artist.thumbnails?.find((t: any) => t.width >= 200)?.url
+                                    || artist.thumbnails?.[artist.thumbnails.length - 1]?.url;
+                                return (
+                                    <div
+                                        key={`${artist.browseId}-${idx}`}
+                                        onClick={() => router.push(`/artist/${artist.browseId}`)}
+                                        className="flex-shrink-0 flex flex-col items-center gap-2.5 cursor-pointer group"
+                                    >
+                                        <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden bg-zinc-800 ring-2 ring-transparent group-hover:ring-purple-500/60 transition-all duration-300">
+                                            {thumb && (
+                                                <img src={thumb} alt={artist.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                            )}
+                                            {!thumb && (
+                                                <div className="w-full h-full flex items-center justify-center">
+                                                    <BiUser className="text-gray-500" size={32} />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <p className="text-white text-xs md:text-sm font-medium text-center w-24 md:w-32 line-clamp-2 group-hover:text-purple-400 transition-colors">
+                                            {he.decode(artist.name || '')}
+                                        </p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex flex-col items-center justify-center py-16 gap-6">
+                        <IoMusicalNotesOutline size={64} className="text-gray-700" />
+                        <p className="text-gray-500 text-center max-w-xs">
+                            Search for your favorite artists using the search bar.
+                        </p>
+                        <button
+                            onClick={() => router.push('/search')}
+                            className="px-6 py-3 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-medium transition-colors"
+                        >
+                            Go to Search
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }

@@ -165,8 +165,23 @@ async def get_lyrics(browseId: str):
         return {"data": None}
 
 # ────────────────────────────────────────────────────────────
-# /charts — Async + cached (daily update — 60 min TTL)
+# /artist — Async + cached (1 hr TTL)
 # ────────────────────────────────────────────────────────────
+@app.get("/artist")
+async def get_artist_data(channelId: str):
+    cache_key = f"artist:{channelId}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return {"data": cached, "cached": True}
+    try:
+        loop = asyncio.get_event_loop()
+        artist = await loop.run_in_executor(executor, lambda: yt.get_artist(channelId))
+        cache_set(cache_key, artist, ttl=3600)  # 1 hour
+        return {"data": artist}
+    except Exception as e:
+        print(f"Error fetching artist {channelId}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/charts")
 async def get_charts_data(country: str = "IN"):
     cache_key = f"charts:{country}"
