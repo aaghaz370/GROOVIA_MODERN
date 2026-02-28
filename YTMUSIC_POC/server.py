@@ -176,11 +176,15 @@ async def get_artist_data(channelId: str):
     try:
         loop = asyncio.get_event_loop()
         artist = await loop.run_in_executor(executor, lambda: yt.get_artist(channelId))
+        if not artist:
+            raise HTTPException(status_code=404, detail="Artist not found")
         cache_set(cache_key, artist, ttl=3600)  # 1 hour
         return {"data": artist}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error fetching artist {channelId}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=404, detail=f"Artist not found: {str(e)}")
 
 @app.get("/charts")
 async def get_charts_data(country: str = "IN"):

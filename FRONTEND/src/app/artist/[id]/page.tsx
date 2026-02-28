@@ -12,7 +12,7 @@ import {
 } from 'react-icons/bi';
 import { HiOutlineHeart } from 'react-icons/hi';
 import { IoRadioOutline, IoShareOutline, IoMusicalNotesOutline } from 'react-icons/io5';
-import { useYTCacheStore } from '@/store/useYTCacheStore';
+import { useYTCacheStore, ytArtistCache } from '@/store/useYTCacheStore';
 import YTArtistDetail from '@/components/yt-music/YTArtistDetail';
 
 interface ArtistData {
@@ -99,12 +99,20 @@ export default function ArtistPage() {
             const isYTArtist = id?.startsWith('UC');
 
             if (isYTArtist) {
-                // Fetch raw data from YT Music backend
+                // 1. Check client-side cache (tab-lifetime)
+                const cached = ytArtistCache.get(id);
+                if (cached && Date.now() - cached.ts < 3600_000) {
+                    setYtRawData(cached.data);
+                    setLoading(false);
+                    return;
+                }
+                // 2. Fetch from YT Music backend
                 const ytApiUrl = process.env.NEXT_PUBLIC_YT_API_URL || 'http://localhost:8000';
                 const res = await fetch(`${ytApiUrl}/artist?channelId=${id}`);
                 if (!res.ok) throw new Error('YT artist fetch failed');
                 const json = await res.json();
                 if (json?.data) {
+                    ytArtistCache.set(id, { data: json.data, ts: Date.now() });
                     setYtRawData(json.data);
                 } else {
                     setYtRawData(null);
@@ -246,7 +254,7 @@ export default function ArtistPage() {
                             <h2 className="text-2xl font-bold text-white">Top songs</h2>
                         </div>
                         <div className="space-y-1">
-                            {artist.topSongs?.slice(0, showAllSongs ? artist.topSongs.length : 5).map((song, index) => (
+                            {artist.topSongs?.slice(0, showAllSongs ? 10 : 5).map((song, index) => (
                                 <div
                                     key={song.id}
                                     onClick={() => handlePlaySong(song)}
@@ -279,7 +287,7 @@ export default function ArtistPage() {
                                     onClick={() => setShowAllSongs(!showAllSongs)}
                                     className="w-full py-3 text-center text-white font-bold text-sm mt-2 border border-zinc-800 rounded-full hover:bg-zinc-900 transition-colors uppercase tracking-wider"
                                 >
-                                    {showAllSongs ? 'Show Less' : 'Show All'}
+                                    {showAllSongs ? 'Show Less' : 'Show More'}
                                 </button>
                             )}
                         </div>
@@ -466,7 +474,7 @@ export default function ArtistPage() {
                         <div className="col-span-12 xl:col-span-12">
                             <h2 className="text-3xl font-bold text-white mb-6">Top songs</h2>
                             <div className="flex flex-col">
-                                {artist.topSongs?.slice(0, showAllSongs ? artist.topSongs.length : 5).map((song, index) => (
+                                {artist.topSongs?.slice(0, showAllSongs ? 10 : 5).map((song, index) => (
                                     <div
                                         key={song.id}
                                         onClick={() => handlePlaySong(song)}
@@ -511,7 +519,7 @@ export default function ArtistPage() {
                                             onClick={() => setShowAllSongs(!showAllSongs)}
                                             className="text-gray-400 font-bold text-sm hover:text-white uppercase tracking-wider"
                                         >
-                                            {showAllSongs ? 'Show Less' : 'Show All'}
+                                            {showAllSongs ? 'Show Less' : 'Show More'}
                                         </button>
                                     </div>
                                 )}
