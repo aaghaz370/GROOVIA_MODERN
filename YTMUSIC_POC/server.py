@@ -1,7 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from ytmusicapi import YTMusic
+import requests
 import uvicorn
 import subprocess
 import asyncio
@@ -111,7 +112,7 @@ async def get_album(browseId: str):
 # /stream — Async (no cache — URLs expire)
 # ────────────────────────────────────────────────────────────
 @app.get("/stream")
-async def stream_audio(videoId: str):
+async def stream_audio(videoId: str, request: Request, response: Response, download: bool = False):
     try:
         def extract():
             ydl_opts = {
@@ -122,11 +123,44 @@ async def stream_audio(videoId: str):
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"https://www.youtube.com/watch?v={videoId}", download=False)
-                return info['url']
+                return info['url'], info.get('title', videoId)
         
         loop = asyncio.get_event_loop()
-        url = await loop.run_in_executor(executor, extract)
-        return RedirectResponse(url=url)
+        url, title = await loop.run_in_executor(executor, extract)
+
+        # Proxy the request to Youtube, forwarding the Range header for seeking
+        req_headers = {}
+        range_header = request.headers.get('Range')
+        if range_header:
+            req_headers['Range'] = range_header
+
+        def proxy_stream():
+            r = requests.get(url, headers=req_headers, stream=True)
+            return r
+
+        r = await loop.run_in_executor(executor, proxy_stream)
+
+        # Pass along important headers
+        resp_headers = {}
+        for h in ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"]:
+            val = r.headers.get(h)
+            if val:
+                resp_headers[h] = val
+                
+        if download:
+            safe_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+            resp_headers["Content-Disposition"] = f'attachment; filename="{safe_title}.m4a"'
+        
+        def iterate_stream():
+            try:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        yield chunk
+            finally:
+                r.close()
+
+        return StreamingResponse(iterate_stream(), status_code=r.status_code, headers=resp_headers)
+
     except Exception as e:
         print(f"Error streaming {videoId}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

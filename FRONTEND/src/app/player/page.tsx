@@ -365,6 +365,23 @@ function PlayerContent() {
 
         try {
             setIsDownloading(true);
+
+            if (currentSong?.youtubeId) {
+                // Direct download from Python backend to circumvent Next.js Blob memory limits and double-proxying
+                const downloadUrl = `${YT_API_URL}/stream?videoId=${currentSong.youtubeId}&download=true`;
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.setAttribute('download', `${he.decode(currentSong.name || 'Song')}.m4a`);
+                // Use target=_blank to ensure the browser handles the attachment download without navigating away
+                link.target = '_blank';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                setTimeout(() => setIsDownloading(false), 1500);
+                return;
+            }
+
             // Get download URL from song data based on settings
             const prefQuality = userData?.settings?.downloadQuality || '320kbps';
 
