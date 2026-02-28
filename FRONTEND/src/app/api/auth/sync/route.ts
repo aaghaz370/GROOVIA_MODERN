@@ -15,7 +15,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Find existing user or create new one
-        let user = await User.findOne({ uid }).populate('playlists');
+        let user = await User.findOne({ uid }).populate({ path: 'playlists', model: Playlist });
+
 
         if (!user) {
             // Create New

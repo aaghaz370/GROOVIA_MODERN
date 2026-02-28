@@ -26,7 +26,11 @@ const mapYTSong = (s: any, artistName: string) => ({
     image: (s.thumbnails || []).sort((a: any, b: any) => (b.width || 0) - (a.width || 0))
         .map((t: any) => ({ quality: 'high', url: t.url })),
     downloadUrl: [],
-    artists: { primary: [{ name: Array.isArray(s.artists) ? s.artists.map((a: any) => a.name).join(', ') : (s.artist || artistName) }] },
+    artists: {
+        primary: Array.isArray(s.artists) && s.artists.length > 0
+            ? s.artists.map((a: any) => ({ name: typeof a === 'string' ? a : (a.name || '') })).filter((a: any) => a.name)
+            : [{ name: s.artist || artistName }]
+    },
     album: { name: s.album?.name || s.album || '' },
     duration: s.duration || '',
 });

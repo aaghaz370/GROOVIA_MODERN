@@ -94,18 +94,32 @@ function PlayerContent() {
         try {
             if (currentSong.youtubeId) {
                 const ytApiUrl = YT_API_URL;
-                const artistList = currentSong.artists?.primary || [];
 
-                // Parallel: watch (for lyrics) + one artist search per artist name
+                // ── Build unique individual artist name list ─────────────────────
+                // mapYTSong now creates separate entries, but old cached songs may
+                // still have joined names like "Pritam, Javed Bashir & Rajat Arora"
+                const rawArtists = currentSong.artists?.primary || [];
+                const artistNames: string[] = [];
+                for (const a of rawArtists) {
+                    // Split by comma, &, feat., ft. to get individual names
+                    const parts = a.name
+                        .split(/,\s*|\s*&\s*|\s+feat\.?\s+|\s+ft\.?\s+/i)
+                        .map((p: string) => p.trim())
+                        .filter((p: string) => p.length > 1);
+                    artistNames.push(...parts);
+                }
+                const uniqueNames = [...new Set(artistNames)].slice(0, 4); // max 4
+
+                // ── Parallel fetch: watch + artist searches ─────────────────────
                 const results = await Promise.allSettled([
                     fetch(`${ytApiUrl}/watch?videoId=${currentSong.youtubeId}`).then(r => r.json()).catch(() => null),
-                    ...artistList.map((a: any) =>
-                        fetch(`${ytApiUrl}/search?query=${encodeURIComponent(a.name)}&filter=artists&limit=2`)
+                    ...uniqueNames.map(name =>
+                        fetch(`${ytApiUrl}/search?query=${encodeURIComponent(name)}&filter=artists&limit=3`)
                             .then(r => r.json()).catch(() => null)
                     )
                 ]);
 
-                // Process watch → lyrics
+                // ── Process watch → lyrics ───────────────────────────────────────
                 let lyricsText: string | null = null;
                 const watchData = results[0].status === 'fulfilled' ? results[0].value : null;
                 const lyricsId = watchData?.data?.lyrics;
@@ -114,18 +128,28 @@ function PlayerContent() {
                     lyricsText = lyricsRes?.data?.lyrics || null;
                 }
 
-                // Process artist searches — pick first browseId match per artist
-                const ytArtists: any[] = artistList.map((a: any, idx: number) => {
+                // ── Process artist searches ──────────────────────────────────────
+                // For each searched name, pick the best match (browseId starting with UC)
+                const ytArtists: any[] = uniqueNames.map((name, idx) => {
                     const res = results[idx + 1];
-                    if (res.status !== 'fulfilled' || !res.value) return { name: a.name, browseId: null, thumbnails: [] };
-                    const first = (res.value?.data || []).find((r: any) => r.browseId?.startsWith('UC'));
-                    return first ? { name: first.artist || first.title || a.name, browseId: first.browseId, thumbnails: first.thumbnails || [] } : { name: a.name, browseId: null, thumbnails: [] };
+                    if (res.status !== 'fulfilled' || !res.value) return { name, browseId: null, thumbnails: [] };
+                    const candidates = (res.value?.data || []).filter((r: any) => r.browseId?.startsWith('UC'));
+                    if (!candidates.length) return { name, browseId: null, thumbnails: [] };
+                    // Prefer result whose title most closely matches the searched name
+                    const best = candidates.find((c: any) =>
+                        (c.artist || c.title || '').toLowerCase().includes(name.toLowerCase().slice(0, 6))
+                    ) || candidates[0];
+                    return {
+                        name: best.artist || best.title || name,
+                        browseId: best.browseId,
+                        thumbnails: best.thumbnails || [],
+                    };
                 });
 
                 setFullSongDetails({
                     id: currentSong.id,
                     artists: currentSong.artists,
-                    ytArtists, // ← enriched with channelId + thumbnails
+                    ytArtists, // ← individual artists with channelId + thumbnails
                     album: currentSong.album,
                     lyrics: lyricsText,
                     hasLyrics: !!lyricsText,
@@ -142,6 +166,7 @@ function PlayerContent() {
             setLoadingDetails(false);
         }
     };
+
 
     const [showMenu, setShowMenu] = useState(false);
     const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
