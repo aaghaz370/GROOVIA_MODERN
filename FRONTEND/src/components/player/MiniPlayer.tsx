@@ -20,6 +20,8 @@ import {
     BiRepeat,
     BiVolumeFull,
     BiChevronUp,
+    BiDownload,
+    BiLoaderAlt,
 } from 'react-icons/bi';
 import { HiOutlineHeart, HiHeart } from 'react-icons/hi';
 
@@ -54,6 +56,8 @@ const MiniPlayer = () => {
 
     // Determine Source
     const isYoutube = !!currentSong?.youtubeId;
+
+
 
     // Handle Source Switching & State Reset
     useEffect(() => {
@@ -328,7 +332,7 @@ const MiniPlayer = () => {
                         </div>
                     </div>
 
-                    {/* Right: Volume */}
+                    {/* Right: Volume + Download */}
                     <div className="flex items-center gap-3 w-[30%] justify-end">
                         <div className="flex items-center gap-2">
                             <BiVolumeFull size={20} className="text-gray-400" />
@@ -339,6 +343,7 @@ const MiniPlayer = () => {
                                 style={{ background: `linear-gradient(to right, #7c3aed ${volume}%, #374151 ${volume}%)` }}
                             />
                         </div>
+
                         <button onClick={() => router.push('/player')} className="p-2 hover:bg-zinc-800 rounded">
                             <BiChevronUp size={20} className="text-gray-400 hover:text-white" />
                         </button>
@@ -376,7 +381,13 @@ const MiniPlayer = () => {
                     }}
                     onError={(e) => {
                         console.error('Audio error:', e);
-                        setError(true);
+                        // Auto-retry with yt-dlp stream if pytubefix/direct URL fails
+                        if (currentSong?.youtubeId && audioUrl && !audioUrl.includes('/stream')) {
+                            console.log('🔄 Retrying with backend stream...');
+                            setAudioUrl(`${YT_API_URL}/stream?videoId=${currentSong.youtubeId}`);
+                        } else {
+                            setError(true);
+                        }
                     }}
                 />
             )}
