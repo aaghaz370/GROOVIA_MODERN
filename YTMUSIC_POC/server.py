@@ -90,17 +90,18 @@ def _extract_stream_url(video_id: str) -> dict:
 
     # Layer 1: yt-dlp using Cloud specific configuration (Cookies + Po_token bypass clients)
     try:
+        has_cookies = os.path.exists("cookies.txt")
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 15,
             "retries": 1,
-            "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
+            "cookiefile": "cookies.txt" if has_cookies else None,
             "extractor_args": {
                 "youtube": {
-                    # Web creator and ios prevent generic webpage JS checks from flagging backend IPs
-                    "player_client": ["ios", "android_creator", "tv_embedded", "web"],
+                    # Web/Android work flawlessly with cookies. iOS/TV throw "App not supported" error with standard cookies.
+                    "player_client": ["android", "web"] if has_cookies else ["ios", "creator", "tv_embedded", "web"],
                     "player_skip": ["webpage", "configs"],
                 }
             },
@@ -140,7 +141,9 @@ def _extract_stream_url(video_id: str) -> dict:
             
             # Robust array of free api endpoints to ensure it NEVER drops
             fallbacks = [
-                f"https://pipedapi.kavin.rocks/streams/{video_id}",
+                f"https://piped-api.lunar.icu/streams/{video_id}",
+                f"https://pipedapi.smnz.de/streams/{video_id}",
+                f"https://pipedapi.syncpundit.io/streams/{video_id}",
                 f"https://api.piped.yt/streams/{video_id}"
             ]
             
