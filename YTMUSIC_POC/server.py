@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, Response, Query, Header
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from ytmusicapi import YTMusic
 import uvicorn
 import asyncio
@@ -11,6 +10,13 @@ import logging
 import os
 import yt_dlp
 import httpx
+
+# ── Deno PATH setup (installed by build.sh, needed for yt-dlp JS challenge solving) ──
+_home = os.path.expanduser("~")
+_deno_bin = os.path.join(_home, ".deno", "bin")
+if os.path.isdir(_deno_bin) and _deno_bin not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _deno_bin + os.pathsep + os.environ.get("PATH", "")
+    logging.getLogger(__name__).info(f"🦕 Deno PATH set: {_deno_bin}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Setup
