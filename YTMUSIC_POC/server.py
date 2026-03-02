@@ -205,10 +205,9 @@ def _innertube_extract(video_id: str) -> dict | None:
 def _extract_stream_url(video_id: str) -> dict:
     """
     Multi-layer audio URL extraction:
-    Layer 0 (PRIMARY): YouTube InnerTube API — works from any IP, no bot checks
-    Layer 1a: yt-dlp mweb client
-    Layer 1b: yt-dlp cookies + android
-    Layer 2:  Piped / Invidious public instances
+    Layer 0 (PRIMARY): YouTube InnerTube API — works from any IP with auth
+    Layer 1: pytubefix (native Python approach, no Deno required)
+    Layer 2: Piped / Invidious public instances
     """
     cached = _stream_cache.get(video_id)
     if cached and cached.get("expires_at", 0) > time.time():
@@ -234,80 +233,27 @@ def _extract_stream_url(video_id: str) -> dict:
         logger.warning(f"⚠️ Layer 0 (InnerTube) failed: {str(e)[:120]}")
         url = None
 
-    # ── Layer 1: yt-dlp (yt-dlp==2024.11.04 — NO Deno requirement) ───────────
-    # Key insight: yt-dlp 2024.11.04 does NOT need Deno for signature solving.
-    # "web" + cookies works cleanly. "tv_embedded" without cookies is the fallback.
+    # ── Layer 1: Pytubefix ─────────────────────────────────────────────────────
+    # Replaces yt-dlp. Pytubefix has built-in PO token handling via pure Python,
+    # no Deno runtime required, works natively.
     if not url:
-        has_cookies = os.path.exists("cookies.txt")
-
-        # Layer 1a: web + cookies (best authenticated approach in 2024.11.04)
-        if has_cookies:
-            try:
-                ydl_opts_web = {
-                    "format": "bestaudio[ext=m4a]/bestaudio/best",
-                    "quiet": True,
-                    "no_warnings": True,
-                    "socket_timeout": 20,
-                    "retries": 2,
-                    "cookiefile": "cookies.txt",
-                    "extractor_args": {
-                        "youtube": {
-                            "player_client": ["web"],
-                            "player_skip": ["webpage"],
-                        }
-                    },
-                }
-                with yt_dlp.YoutubeDL(ydl_opts_web) as ydl:
-                    logger.info(f"🔍 Layer 1a: web+cookies for {video_id}...")
-                    info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
-                    url = info.get("url")
-                    if not url:
-                        for fmt in reversed(info.get("formats", [])):
-                            if fmt.get("url") and fmt.get("acodec") != "none":
-                                url = fmt["url"]
-                                break
-                    if url:
-                        ext = info.get("ext", "webm")
-                        http_headers = info.get("http_headers", {})
-                        title_res = info.get("title", video_id)
-                        logger.info(f"🎵 Layer 1a SUCCESS via web+cookies [{ext}]")
-            except Exception as e:
-                logger.warning(f"⚠️ Layer 1a (web+cookies) failed: {str(e)[:120]}")
-                url = None
-
-        # Layer 1b: tv_embedded WITHOUT cookies (unauthenticated, works on residential IPs)
-        if not url:
-            try:
-                ydl_opts_tv = {
-                    "format": "bestaudio/best",
-                    "quiet": True,
-                    "no_warnings": True,
-                    "socket_timeout": 20,
-                    "retries": 2,
-                    "extractor_args": {
-                        "youtube": {
-                            "player_client": ["tv_embedded"],
-                            "player_skip": ["webpage", "configs"],
-                        }
-                    },
-                }
-                with yt_dlp.YoutubeDL(ydl_opts_tv) as ydl:
-                    logger.info(f"🔍 Layer 1b: tv_embedded (no cookies) for {video_id}...")
-                    info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
-                    url = info.get("url")
-                    if not url:
-                        for fmt in reversed(info.get("formats", [])):
-                            if fmt.get("url") and fmt.get("acodec") != "none":
-                                url = fmt["url"]
-                                break
-                    if url:
-                        ext = info.get("ext", "webm")
-                        http_headers = info.get("http_headers", {})
-                        title_res = info.get("title", video_id)
-                        logger.info(f"🎵 Layer 1b SUCCESS via tv_embedded [{ext}]")
-            except Exception as e:
-                logger.warning(f"⚠️ Layer 1b (tv_embedded) failed: {str(e)[:120]}")
-                url = None
+        try:
+            from pytubefix import YouTube
+            yt_url = f"https://music.youtube.com/watch?v={video_id}"
+            yt = YouTube(yt_url, use_oauth=False, allow_oauth_cache=False)
+            logger.info(f"🔍 Layer 1: Try pytubefix for {video_id}...")
+            
+            audio_streams = yt.streams.filter(only_audio=True).order_by('abr').desc()
+            if audio_streams:
+                best_audio = audio_streams[0]
+                url = best_audio.url
+                ext = "m4a" if "mp4" in best_audio.mime_type else "webm"
+                http_headers = {"User-Agent": "Mozilla/5.0"}
+                title_res = yt.title or video_id
+                logger.info(f"🎵 Layer 1 SUCCESS via Pytubefix [{ext}]")
+        except Exception as e:
+            logger.warning(f"⚠️ Layer 1 (Pytubefix) failed: {e}")
+            url = None
 
 
     # ── Layer 2: Piped + Invidious ─────────────────────────────────────────────

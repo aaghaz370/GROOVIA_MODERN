@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 ytmusicapi
+pytubefix
 yt-dlp
 httpx
 
