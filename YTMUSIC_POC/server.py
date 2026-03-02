@@ -75,8 +75,9 @@ if cookies_b64:
 def _extract_stream_url(video_id: str) -> dict:
     """
     Extract best audio stream URL using yt-dlp with a multi-layered fallback strategy.
-    1. Local yt-dlp using cookies.txt + iOS/TV client arrays.
-    2. Fallback to public alternative APIs if the DataCenter IP is banned.
+    Layer 1a: mweb client (mobile web) — works on cloud/datacenter IPs without cookies
+    Layer 1b: cookies + android/web client fallback
+    Layer 2:  Piped / Invidious public API fallback
     """
     cached = _stream_cache.get(video_id)
     if cached and cached.get("expires_at", 0) > time.time():
@@ -88,35 +89,26 @@ def _extract_stream_url(video_id: str) -> dict:
     http_headers = {}
     title_res = video_id
 
-    # Layer 1: yt-dlp using Cloud specific configuration (Cookies + Po_token bypass clients)
+    # ── Layer 1a: mweb player_client ──────────────────────────────────────────
+    # "mweb" is a mobile-web client that bypasses po_token checks on datacenter
+    # IPs. No cookies needed. Best option for cloud hosting like Render.
     try:
-        has_cookies = os.path.exists("cookies.txt")
-        ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+        ydl_opts_mweb = {
+            "format": "bestaudio/best",
             "quiet": True,
             "no_warnings": True,
-            "socket_timeout": 15,
-            "retries": 1,
-            "cookiefile": "cookies.txt" if has_cookies else None,
+            "socket_timeout": 20,
+            "retries": 2,
             "extractor_args": {
                 "youtube": {
-                    # Web/Android work flawlessly with cookies. iOS/TV throw "App not supported" error with standard cookies.
-                    "player_client": ["android", "web"] if has_cookies else ["ios", "creator", "tv_embedded", "web"],
+                    "player_client": ["mweb"],
                     "player_skip": ["webpage", "configs"],
                 }
             },
         }
-
-        # Suppress logging spam from yt-dlp if it hits a roadblock
-        import logging as local_dlp_log
-        ydl_opts['logger'] = local_dlp_log.getLogger('youtube')
-        ydl_opts['logger'].setLevel(local_dlp_log.ERROR)
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            logger.info("Attempting extraction with cookies/native bypass...")
+        with yt_dlp.YoutubeDL(ydl_opts_mweb) as ydl:
+            logger.info(f"🔍 Layer 1a: Trying mweb client for {video_id}...")
             info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
-            
-            # Find the best format
             url = info.get("url")
             if not url:
                 for fmt in reversed(info.get("formats", [])):
@@ -127,11 +119,46 @@ def _extract_stream_url(video_id: str) -> dict:
                 ext = info.get("ext", "webm")
                 http_headers = info.get("http_headers", {})
                 title_res = info.get("title", video_id)
-                logger.info("🎵 Extracted via Native YT-DLP")
-
+                logger.info(f"🎵 Layer 1a SUCCESS via mweb client [{ext}]")
     except Exception as e:
-        logger.warning(f"⚠️ Native YT-DLP blocked (bot detection OR invalid cookies). Error substring: {str(e)[:100]}...")
+        logger.warning(f"⚠️ Layer 1a (mweb) failed: {str(e)[:120]}")
         url = None
+
+    # ── Layer 1b: cookies + android/web ───────────────────────────────────────
+    if not url:
+        try:
+            has_cookies = os.path.exists("cookies.txt")
+            ydl_opts_auth = {
+                "format": "bestaudio/best",
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 15,
+                "retries": 1,
+                "cookiefile": "cookies.txt" if has_cookies else None,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "web"] if has_cookies else ["tv_embedded", "web"],
+                        "player_skip": ["webpage", "configs"],
+                    }
+                },
+            }
+            with yt_dlp.YoutubeDL(ydl_opts_auth) as ydl:
+                logger.info(f"🔍 Layer 1b: Trying cookies/android client for {video_id}...")
+                info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
+                url = info.get("url")
+                if not url:
+                    for fmt in reversed(info.get("formats", [])):
+                        if fmt.get("url") and fmt.get("acodec") != "none":
+                            url = fmt["url"]
+                            break
+                if url:
+                    ext = info.get("ext", "webm")
+                    http_headers = info.get("http_headers", {})
+                    title_res = info.get("title", video_id)
+                    logger.info(f"🎵 Layer 1b SUCCESS via cookies/android [{ext}]")
+        except Exception as e:
+            logger.warning(f"⚠️ Layer 1b (cookies/android) failed: {str(e)[:120]}")
+            url = None
 
     # Layer 2: Pipeline Cobalt/API Fallback
     if not url:
@@ -140,14 +167,15 @@ def _extract_stream_url(video_id: str) -> dict:
             import random
             
             # Robust array of free api endpoints to ensure it NEVER drops
-            fallbacks = [
+            # Piped instances (return audioStreams)
+            piped_fallbacks = [
                 f"https://piped-api.lunar.icu/streams/{video_id}",
                 f"https://pipedapi.smnz.de/streams/{video_id}",
                 f"https://pipedapi.syncpundit.io/streams/{video_id}",
-                f"https://api.piped.yt/streams/{video_id}"
+                f"https://api.piped.yt/streams/{video_id}",
             ]
             
-            for fallback_api in fallbacks:
+            for fallback_api in piped_fallbacks:
                 try:
                     with httpx.Client(timeout=10) as client:
                         res = client.get(fallback_api)
@@ -155,15 +183,39 @@ def _extract_stream_url(video_id: str) -> dict:
                         data = res.json()
                         audio_streams = data.get("audioStreams", [])
                         if audio_streams:
-                            # Pick top bitrate format
                             stream = sorted(audio_streams, key=lambda x: x.get("bitrate", 0), reverse=True)[0]
                             url = stream.get("url")
                             ext = "m4a" if stream.get("mimeType", "").startswith("audio/mp4") else "webm"
                             http_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-                            logger.info(f"🎵 Extracted via Proxy Fallback ({fallback_api})")
+                            logger.info(f"🎵 Layer 2 SUCCESS via Piped fallback ({fallback_api})")
                             break
                 except Exception:
                     continue
+
+            # Invidious instances (return adaptiveFormats) — different API shape than Piped
+            if not url:
+                invidious_fallbacks = [
+                    f"https://invidious.nerdvpn.de/api/v1/videos/{video_id}",
+                    f"https://iv.datura.network/api/v1/videos/{video_id}",
+                    f"https://invidious.privacydev.net/api/v1/videos/{video_id}",
+                ]
+                for inv_api in invidious_fallbacks:
+                    try:
+                        with httpx.Client(timeout=10) as client:
+                            res = client.get(inv_api)
+                        if res.status_code == 200:
+                            data = res.json()
+                            adaptive = [f for f in data.get("adaptiveFormats", []) if f.get("type", "").startswith("audio")]
+                            if adaptive:
+                                stream = sorted(adaptive, key=lambda x: int(x.get("bitrate", 0)), reverse=True)[0]
+                                url = stream.get("url")
+                                ext = "m4a" if "mp4" in stream.get("type", "") else "webm"
+                                http_headers = {"User-Agent": "Mozilla/5.0"}
+                                logger.info(f"🎵 Layer 2 SUCCESS via Invidious ({inv_api})")
+                                break
+                    except Exception:
+                        continue
+
         except Exception as e:
             logger.error(f"Fallback layer failed: {e}")
 
