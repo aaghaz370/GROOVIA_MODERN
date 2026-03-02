@@ -78,14 +78,40 @@ if cookies_b64:
     except Exception as e:
         logger.error(f"❌ Failed to decode cookies: {e}")
 
+def _parse_netscape_cookies(filepath: str) -> dict:
+    """Parse a Netscape cookies.txt file into a name→value dict."""
+    cookies = {}
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 7:
+                    cookies[parts[5]] = parts[6]
+    except Exception:
+        pass
+    return cookies
+
+
+def _make_sapisidhash(sapisid: str, origin: str = "https://www.youtube.com") -> str:
+    """Generate YouTube SAPISIDHASH authorization header value."""
+    import hashlib
+    ts = int(time.time())
+    h = hashlib.sha1(f"{ts} {sapisid} {origin}".encode()).hexdigest()
+    return f"SAPISIDHASH {ts}_{h}"
+
+
 def _innertube_extract(video_id: str) -> dict | None:
     """
-    Call YouTube's internal InnerTube API directly using ANDROID_MUSIC client.
-    This works from datacenter IPs WITHOUT cookies or bot checks.
-    YouTube allows this because it treats it as a legitimate app API call.
+    Call YouTube InnerTube API with full authentication from cookies.txt.
+    Uses ANDROID_MUSIC client + auth cookies + SAPISIDHASH header.
+    Works from ANY IP (including Render datacenter) when valid auth cookies present.
     """
-    INNERTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-    url = f"https://www.youtube.com/youtubei/v1/player?key={INNERTUBE_API_KEY}&prettyPrint=false"
+    cookies = _parse_netscape_cookies("cookies.txt") if os.path.exists("cookies.txt") else {}
+
+    sapisid = cookies.get("SAPISID") or cookies.get("__Secure-3PAPISID") or cookies.get("__Secure-1PAPISID")
 
     payload = {
         "context": {
@@ -94,7 +120,7 @@ def _innertube_extract(video_id: str) -> dict | None:
                 "clientVersion": "7.27.52",
                 "androidSdkVersion": 30,
                 "hl": "en",
-                "gl": "US",
+                "gl": "IN",
                 "userAgent": "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 11) gzip",
             }
         },
@@ -108,14 +134,31 @@ def _innertube_extract(video_id: str) -> dict | None:
 
     headers = {
         "Content-Type": "application/json",
+        "User-Agent": "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 11) gzip",
         "X-YouTube-Client-Name": "21",
         "X-YouTube-Client-Version": "7.27.52",
-        "User-Agent": "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 11) gzip",
         "Origin": "https://music.youtube.com",
+        "X-Origin": "https://music.youtube.com",
     }
 
+    # Add auth if cookies available
+    if cookies:
+        # Build Cookie header string from all cookies
+        cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        headers["Cookie"] = cookie_str
+        logger.info(f"🔑 InnerTube: using {len(cookies)} auth cookies (SID present: {'SID' in cookies})")
+
+        # Add SAPISIDHASH authorization for authenticated requests
+        if sapisid:
+            headers["Authorization"] = _make_sapisidhash(sapisid)
+            headers["X-Goog-AuthUser"] = "0"
+    else:
+        logger.warning("⚠️ InnerTube: no cookies found, trying unauthenticated")
+
+    api_url = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+
     with httpx.Client(timeout=15) as client:
-        resp = client.post(url, json=payload, headers=headers)
+        resp = client.post(api_url, json=payload, headers=headers)
 
     if resp.status_code != 200:
         logger.warning(f"InnerTube HTTP {resp.status_code} for {video_id}")
@@ -123,36 +166,32 @@ def _innertube_extract(video_id: str) -> dict | None:
 
     data = resp.json()
 
-    # Check for errors (private video, unavailable, etc.)
     playability = data.get("playabilityStatus", {})
-    if playability.get("status") not in ("OK", None):
+    status = playability.get("status")
+    if status not in ("OK", None):
         reason = playability.get("reason", "unknown")
-        logger.warning(f"InnerTube playability error for {video_id}: {reason}")
+        logger.warning(f"InnerTube playability [{status}] for {video_id}: {reason}")
         return None
 
     streaming_data = data.get("streamingData", {})
     formats = streaming_data.get("adaptiveFormats", []) + streaming_data.get("formats", [])
 
-    # Filter audio-only formats and pick highest bitrate
     audio_formats = [
         f for f in formats
         if f.get("mimeType", "").startswith("audio") and f.get("url")
     ]
 
     if not audio_formats:
-        logger.warning(f"InnerTube: no audio formats for {video_id}")
+        logger.warning(f"InnerTube: no direct audio URLs for {video_id} (may need signature decryption)")
         return None
 
-    # Prefer m4a (audio/mp4), then opus, then anything
     m4a = [f for f in audio_formats if "mp4" in f.get("mimeType", "")]
     chosen = sorted(m4a or audio_formats, key=lambda f: f.get("averageBitrate", f.get("bitrate", 0)), reverse=True)[0]
 
     stream_url = chosen["url"]
     mime = chosen.get("mimeType", "audio/webm")
     ext = "m4a" if "mp4" in mime else "webm"
-
-    title_data = data.get("videoDetails", {})
-    title = title_data.get("title", video_id)
+    title = data.get("videoDetails", {}).get("title", video_id)
 
     logger.info(f"🎵 InnerTube SUCCESS for {video_id} [{ext}] @ {chosen.get('averageBitrate', '?')}bps")
     return {
