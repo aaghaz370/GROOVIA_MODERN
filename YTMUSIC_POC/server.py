@@ -170,7 +170,7 @@ def _innertube_extract(video_id: str) -> dict | None:
 
 def _extract_stream_url(video_id: str) -> dict:
     """
-    Audio URL extraction exclusively using yt-dlp (fast android client)
+    Audio URL extraction using yt-dlp (fast) with fallback to pytubefix.
     Bypasses Render proxy blocks and JavaScript signature requirements.
     """
     cached = _stream_cache.get(video_id)
@@ -183,45 +183,72 @@ def _extract_stream_url(video_id: str) -> dict:
     http_headers = {"User-Agent": "Mozilla/5.0"}
     title_res = video_id
 
-    try:
-        logger.info(f"🔍 Extracting via yt-dlp (Android Client) for {video_id}...")
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-            'source_address': '0.0.0.0', # Force IPv4, often helps bypass generic IPv6 bans on Render
-            'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
-            'extractor_args': {
-                'youtube': ['player_client=android'] # Pure android client, bypasses signature decoding, faster and less blocked
+    # LAYER 1: yt-dlp (Fastest, multiple clients to bypass bots)
+    clients_to_test = [
+        ['player_client=android'],  # Android music app (Fastest, usually clean)
+        ['client=ios'],             # iOS client (Bypasses many Datacenter IP blocks)
+        ['client=tv'],              # TV client (Less strictly IP checked) 
+    ]
+    
+    for client_arg in clients_to_test:
+        try:
+            logger.info(f"🔍 Extracting via yt-dlp ({client_arg[0]}) for {video_id}...")
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': False,
+                'source_address': '0.0.0.0', # Force IPv4
+                'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
+                'extractor_args': {'youtube': client_arg}
             }
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
-            if info:
-                url = info.get('url')
-                ext = info.get('ext', 'webm')
-                # Use yt-dlp headers if provided, otherwise fallback
-                http_headers = info.get('http_headers', {"User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 11)"})
-                title_res = info.get('title', video_id)
-                logger.info(f"🎵 yt-dlp SUCCESS for {video_id} [{ext}]")
-                
-                # Cache successful url for 50 minutes (Youtube links expire in ~6 hours usually)
-                cache_data = {
-                    "url": url,
-                    "ext": ext,
-                    "http_headers": http_headers,
-                    "title": title_res,
-                    "expires_at": time.time() + 3000
-                }
-                _stream_cache[video_id] = cache_data
-                return cache_data
-                
-    except Exception as e:
-        logger.error(f"⚠️ yt-dlp extraction failed for {video_id}: {e}")
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
+                if info and info.get('url'):
+                    url = info.get('url')
+                    ext = info.get('ext', 'webm')
+                    http_headers = info.get('http_headers', {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)"})
+                    title_res = info.get('title', video_id)
+                    logger.info(f"🎵 yt-dlp SUCCESS ({client_arg[0]}) for {video_id} [{ext}]")
+                    break
+        except Exception as e:
+            logger.warning(f"⚠️ yt-dlp {client_arg[0]} failed: {str(e)[:150]}")
+            continue
 
-    raise ValueError(f"Stream extraction failed for {video_id}. Video may be unavailable, age-restricted, or IP might be completely blocked.")
+    # LAYER 2: Pytubefix (Natively bypasses PO bot checks in Python)
+    # Re-enabled because it natively implements Bot Check Bypasses that yt-dlp struggles with on Render
+    if not url:
+        try:
+            logger.info(f"🔍 Layer 2: Extracting via pytubefix for {video_id}...")
+            from pytubefix import YouTube
+            yt_url = f"https://music.youtube.com/watch?v={video_id}"
+            yt = YouTube(yt_url, use_oauth=False, allow_oauth_cache=False)
+            
+            audio_streams = yt.streams.filter(only_audio=True).order_by('abr').desc()
+            if audio_streams:
+                best_audio = audio_streams[0]
+                url = best_audio.url
+                ext = "m4a" if "mp4" in best_audio.mime_type else "webm"
+                http_headers = {"User-Agent": "Mozilla/5.0"}
+                title_res = yt.title or video_id
+                logger.info(f"🎵 Pytubefix SUCCESS for {video_id} [{ext}]")
+        except Exception as e:
+            logger.error(f"⚠️ Pytubefix failed for {video_id}: {str(e)[:150]}")
+
+    if url:
+        # Cache successful url for 50 minutes
+        cache_data = {
+            "url": url,
+            "ext": ext,
+            "http_headers": http_headers,
+            "title": title_res,
+            "expires_at": time.time() + 3000
+        }
+        _stream_cache[video_id] = cache_data
+        return cache_data
+    else:
+        raise ValueError(f"Stream extraction fully exhausted for {video_id}. IP heavily blocked.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
