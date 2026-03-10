@@ -68,15 +68,47 @@ _stream_cache: dict = {}
 # Cookies Setup for Cloud Deployment (Render bot bypass)
 # ─────────────────────────────────────────────────────────────────────────────
 cookies_b64 = os.environ.get("YT_COOKIES_B64")
-if cookies_b64:
-    try:
-        import base64
-        cookies_txt = base64.b64decode(cookies_b64).decode("utf-8")
-        with open("cookies.txt", "w") as f:
-            f.write(cookies_txt)
-        logger.info("🍪 Decoded YT_COOKIES_B64 and generated cookies.txt for bot bypass.")
-    except Exception as e:
-        logger.error(f"❌ Failed to decode cookies: {e}")
+import base64
+
+def _setup_cookies():
+    # 1. First try Env Var (Fastest)
+    if cookies_b64:
+        try:
+            cookies_txt = base64.b64decode(cookies_b64).decode("utf-8")
+            with open("cookies.txt", "w") as f:
+                f.write(cookies_txt)
+            logger.info("🍪 Decoded YT_COOKIES_B64 from ENV and generated cookies.txt for bot bypass.")
+            return
+        except Exception as e:
+            logger.error(f"❌ Failed to decode ENV cookies: {e}")
+
+    # 2. Try looking for the raw or b64 file in the filesystem
+    potential_paths = [
+        "cookies_b64_for_render.txt", 
+        "../cookies_b64_for_render.txt",
+        "cookies.txt"
+    ]
+    
+    for path in potential_paths:
+        if os.path.exists(path):
+            if path.endswith("cookies.txt"):
+                logger.info("🍪 Found existing cookies.txt directly in filesystem.")
+                return
+            else:
+                try:
+                    with open(path, "r") as f:
+                        b64_content = f.read().strip()
+                    cookies_txt = base64.b64decode(b64_content).decode("utf-8")
+                    with open("cookies.txt", "w") as f:
+                        f.write(cookies_txt)
+                    logger.info(f"🍪 Decoded '{path}' and generated cookies.txt for bot bypass.")
+                    return
+                except Exception as e:
+                    logger.error(f"❌ Failed to decode file {path}: {e}")
+                    
+    logger.warning("⚠️ NO COOKIES FOUND: yt-dlp will run unauthenticated and might get blocked by YouTube on Datacenter IPs!")
+
+_setup_cookies()
 
 def _parse_netscape_cookies(filepath: str) -> dict:
     """Parse a Netscape cookies.txt file into a name→value dict."""
