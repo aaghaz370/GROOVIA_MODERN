@@ -185,9 +185,10 @@ def _extract_stream_url(video_id: str) -> dict:
 
     # LAYER 1: yt-dlp (Fastest, multiple clients to bypass bots)
     clients_to_test = [
-        ['player_client=android'],  # Android music app (Fastest, usually clean)
-        ['client=ios'],             # iOS client (Bypasses many Datacenter IP blocks)
-        ['client=tv'],              # TV client (Less strictly IP checked) 
+        ['client=tv,android'],          # Combines TV API (no tokens) with Android formats
+        ['client=ios,web'],             # Combines iOS API with basic web formats
+        ['player_client=android'],      # Android music app (Fastest, usually clean)
+        ['client=android_vr'],          # VR Client (Oculus) almost never gets IP blocked
     ]
     
     for client_arg in clients_to_test:
