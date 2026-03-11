@@ -202,8 +202,13 @@ def _innertube_extract(video_id: str) -> dict | None:
 
 def _extract_stream_url(video_id: str) -> dict:
     """
-    Audio URL extraction using yt-dlp (fast) with fallback to pytubefix.
-    Bypasses Render proxy blocks and JavaScript signature requirements.
+    Audio URL extraction - 3 layers:
+    LAYER 0 (PRIMARY): YouTube InnerTube API (ytmusicapi.get_song)
+      - Makes server-to-server HTTPS API calls, NOT browser scraping
+      - Works from ANY IP including Render datacenters when cookies are valid
+      - Fast, reliable, and returns direct CDN URLs
+    LAYER 1: yt-dlp with multiple client spoofing (fallback)
+    LAYER 2: pytubefix (last resort)
     """
     cached = _stream_cache.get(video_id)
     if cached and cached.get("expires_at", 0) > time.time():
@@ -215,49 +220,61 @@ def _extract_stream_url(video_id: str) -> dict:
     http_headers = {"User-Agent": "Mozilla/5.0"}
     title_res = video_id
 
-    # LAYER 1: yt-dlp (Fastest, multiple clients to bypass bots)
-    clients_to_test = [
-        ['client=tv,android'],          # Combines TV API (no tokens) with Android formats
-        ['client=ios,web'],             # Combines iOS API with basic web formats
-        ['player_client=android'],      # Android music app (Fastest, usually clean)
-        ['client=android_vr'],          # VR Client (Oculus) almost never gets IP blocked
-    ]
-    
-    for client_arg in clients_to_test:
-        try:
-            logger.info(f"🔍 Extracting via yt-dlp ({client_arg[0]}) for {video_id}...")
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'no_warnings': True,
-                'extract_flat': False,
-                'source_address': '0.0.0.0', # Force IPv4
-                'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
-                'extractor_args': {'youtube': client_arg}
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
-                if info and info.get('url'):
-                    url = info.get('url')
-                    ext = info.get('ext', 'webm')
-                    http_headers = info.get('http_headers', {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)"})
-                    title_res = info.get('title', video_id)
-                    logger.info(f"🎵 yt-dlp SUCCESS ({client_arg[0]}) for {video_id} [{ext}]")
-                    break
-        except Exception as e:
-            logger.warning(f"⚠️ yt-dlp {client_arg[0]} failed: {str(e)[:150]}")
-            continue
+    # ── LAYER 0: InnerTube direct API ────────────────────────────────────────
+    # This is a proper server-to-server JSON API call to YouTube's internal API.
+    # It is NOT browser scraping so Render IP bans do NOT affect it.
+    # Works reliably as long as cookies are fresh (re-export every ~2 weeks).
+    try:
+        logger.info(f"🔍 Layer 0: InnerTube API for {video_id}...")
+        result = _innertube_extract(video_id)
+        if result:
+            url = result["url"]
+            ext = result["ext"]
+            http_headers = result["http_headers"]
+            title_res = result["title"]
+            logger.info(f"🎵 Layer 0 InnerTube SUCCESS for {video_id} [{ext}]")
+    except Exception as e:
+        logger.warning(f"⚠️ Layer 0 (InnerTube) failed: {str(e)[:120]}")
 
-    # LAYER 2: Pytubefix (Natively bypasses PO bot checks in Python)
-    # Re-enabled because it natively implements Bot Check Bypasses that yt-dlp struggles with on Render
+    # ── LAYER 1: yt-dlp multi-client fallback ────────────────────────────────
+    if not url:
+        clients_to_test = [
+            ['client=tv,android'],
+            ['player_client=android'],
+            ['client=ios,web'],
+            ['client=android_vr'],
+        ]
+        for client_arg in clients_to_test:
+            try:
+                logger.info(f"🔍 Layer 1: yt-dlp ({client_arg[0]}) for {video_id}...")
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'extract_flat': False,
+                    'source_address': '0.0.0.0',
+                    'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
+                    'extractor_args': {'youtube': client_arg}
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=False)
+                    if info and info.get('url'):
+                        url = info.get('url')
+                        ext = info.get('ext', 'webm')
+                        http_headers = info.get('http_headers', {"User-Agent": "Mozilla/5.0"})
+                        title_res = info.get('title', video_id)
+                        logger.info(f"🎵 Layer 1 yt-dlp SUCCESS ({client_arg[0]}) for {video_id}")
+                        break
+            except Exception as e:
+                logger.warning(f"⚠️ Layer 1 yt-dlp {client_arg[0]} failed: {str(e)[:100]}")
+                continue
+
+    # ── LAYER 2: pytubefix ────────────────────────────────────────────────────
     if not url:
         try:
-            logger.info(f"🔍 Layer 2: Extracting via pytubefix for {video_id}...")
+            logger.info(f"🔍 Layer 2: pytubefix for {video_id}...")
             from pytubefix import YouTube
-            yt_url = f"https://music.youtube.com/watch?v={video_id}"
-            yt = YouTube(yt_url, use_oauth=False, allow_oauth_cache=False)
-            
+            yt = YouTube(f"https://music.youtube.com/watch?v={video_id}", use_oauth=False, allow_oauth_cache=False)
             audio_streams = yt.streams.filter(only_audio=True).order_by('abr').desc()
             if audio_streams:
                 best_audio = audio_streams[0]
@@ -265,23 +282,20 @@ def _extract_stream_url(video_id: str) -> dict:
                 ext = "m4a" if "mp4" in best_audio.mime_type else "webm"
                 http_headers = {"User-Agent": "Mozilla/5.0"}
                 title_res = yt.title or video_id
-                logger.info(f"🎵 Pytubefix SUCCESS for {video_id} [{ext}]")
+                logger.info(f"🎵 Layer 2 pytubefix SUCCESS for {video_id}")
         except Exception as e:
-            logger.error(f"⚠️ Pytubefix failed for {video_id}: {str(e)[:150]}")
+            logger.error(f"⚠️ Layer 2 pytubefix failed: {str(e)[:100]}")
 
     if url:
-        # Cache successful url for 50 minutes
         cache_data = {
-            "url": url,
-            "ext": ext,
-            "http_headers": http_headers,
-            "title": title_res,
+            "url": url, "ext": ext,
+            "http_headers": http_headers, "title": title_res,
             "expires_at": time.time() + 3000
         }
         _stream_cache[video_id] = cache_data
         return cache_data
-    else:
-        raise ValueError(f"Stream extraction fully exhausted for {video_id}. IP heavily blocked.")
+
+    raise ValueError(f"All 3 layers exhausted for {video_id}. Cookies may be expired — re-export from browser.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
