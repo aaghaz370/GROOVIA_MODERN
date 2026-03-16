@@ -58,6 +58,7 @@ const MiniPlayer = () => {
     // Determine Source
     const isYoutube = !!currentSong?.youtubeId;
 
+<<<<<<< HEAD
     // ── Download Handler ─────────────────────────────────────────────────────
     const handleDownload = () => {
         if (!currentSong || isDownloading) return;
@@ -92,6 +93,9 @@ const MiniPlayer = () => {
         document.body.removeChild(a);
         setTimeout(() => setIsDownloading(false), 3000);
     };
+=======
+
+>>>>>>> a1e1a8786edf0db822959330054fa249b12516c4
 
     // Handle Source Switching & State Reset
     useEffect(() => {
@@ -377,6 +381,7 @@ const MiniPlayer = () => {
                                 style={{ background: `linear-gradient(to right, #7c3aed ${volume}%, #374151 ${volume}%)` }}
                             />
                         </div>
+<<<<<<< HEAD
                         <button
                             onClick={handleDownload}
                             disabled={isDownloading}
@@ -388,6 +393,9 @@ const MiniPlayer = () => {
                                 : <BiDownload size={20} className="text-gray-400 hover:text-white" />
                             }
                         </button>
+=======
+
+>>>>>>> a1e1a8786edf0db822959330054fa249b12516c4
                         <button onClick={() => router.push('/player')} className="p-2 hover:bg-zinc-800 rounded">
                             <BiChevronUp size={20} className="text-gray-400 hover:text-white" />
                         </button>

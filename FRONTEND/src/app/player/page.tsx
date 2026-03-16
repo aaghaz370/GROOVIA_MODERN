@@ -146,11 +146,25 @@ function PlayerContent() {
                     };
                 });
 
+                // ── Extract Album ID from watchData ──────────────────────────────────────
+                let resolvedAlbum: any = currentSong.album;
+                if (watchData && watchData.data && (watchData.data.videoType === 'MUSIC_VIDEO_TYPE_ATV' || watchData.data.tracks)) {
+                    // Try to get album details from the watch data's tracks.
+                    const watchTracks = watchData.data.tracks || [];
+                    const currentTrack = watchTracks.find((t: any) => t.videoId === currentSong.youtubeId) || watchTracks[0];
+                    if (currentTrack?.album) {
+                        resolvedAlbum = {
+                            name: currentTrack.album.name || resolvedAlbum?.name,
+                            id: currentTrack.album.id || resolvedAlbum?.id
+                        };
+                    }
+                }
+
                 setFullSongDetails({
                     id: currentSong.id,
                     artists: currentSong.artists,
                     ytArtists, // ← individual artists with channelId + thumbnails
-                    album: currentSong.album,
+                    album: resolvedAlbum,
                     lyrics: lyricsText,
                     hasLyrics: !!lyricsText,
                     image: currentSong.image,
@@ -367,59 +381,62 @@ function PlayerContent() {
             setIsDownloading(true);
 
             if (currentSong?.youtubeId) {
-                // Direct download from Python backend to circumvent Next.js Blob memory limits and double-proxying
-                const downloadUrl = `${YT_API_URL}/stream?videoId=${currentSong.youtubeId}&download=true`;
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.setAttribute('download', `${he.decode(currentSong.name || 'Song')}.m4a`);
-                // Use target=_blank to ensure the browser handles the attachment download without navigating away
-                link.target = '_blank';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                const safeTitle = encodeURIComponent(he.decode(currentSong.name || 'song'));
+                // Use the backend /download endpoint instead of dropping to stream, effectively naming it right.
+                const downloadUrl = `${YT_API_URL}/download?videoId=${currentSong.youtubeId}&title=${safeTitle}`;
 
-                setTimeout(() => setIsDownloading(false), 1500);
-                return;
-            }
-
-            // Get download URL from song data based on settings
-            const prefQuality = userData?.settings?.downloadQuality || '320kbps';
-
-            const downloadUrl = currentSong.downloadUrl?.find((d: any) => d.quality === prefQuality)?.url ||
-                currentSong.downloadUrl?.find((d: any) => d.quality === '320kbps')?.url ||
-                currentSong.downloadUrl?.find((d: any) => d.quality === '160kbps')?.url ||
-                currentSong.downloadUrl?.[0]?.url;
-
-            if (downloadUrl) {
-                // Use our local proxy to avoid CORS issues
-                const proxyUrl = `/api/download?url=${encodeURIComponent(downloadUrl)}`;
-
-                // Fetch the file as blob via proxy
-                const response = await fetch(proxyUrl);
+                // Fetch the file as blob directly from the backend (which has CORS enabled)
+                const response = await fetch(downloadUrl);
                 if (!response.ok) throw new Error('Download failed');
 
                 const blob = await response.blob();
-
-                // Create blob URL
                 const blobUrl = window.URL.createObjectURL(blob);
 
-                // Create temporary anchor
                 const link = document.createElement('a');
                 link.href = blobUrl;
-                link.download = `${he.decode(currentSong.name)}.mp3`;
+                link.download = `${he.decode(currentSong.name || 'song')}.m4a`;
                 link.style.display = 'none';
 
-                // Append, click, and cleanup
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
 
-                // Revoke blob URL after download
                 setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
-
-                console.log('Download started:', currentSong.name);
+                console.log('YT Download started:', currentSong.name);
             } else {
-                console.error('No download URL available');
+                // Get download URL from song data based on settings
+                const prefQuality = userData?.settings?.downloadQuality || '320kbps';
+
+                const downloadUrl = currentSong.downloadUrl?.find((d: any) => d.quality === prefQuality)?.url ||
+                    currentSong.downloadUrl?.find((d: any) => d.quality === '320kbps')?.url ||
+                    currentSong.downloadUrl?.find((d: any) => d.quality === '160kbps')?.url ||
+                    currentSong.downloadUrl?.[0]?.url;
+
+                if (downloadUrl) {
+                    // Use our local proxy to avoid CORS issues
+                    const proxyUrl = `/api/download?url=${encodeURIComponent(downloadUrl)}`;
+
+                    // Fetch the file as blob via proxy
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error('Download failed');
+
+                    const blob = await response.blob();
+                    const blobUrl = window.URL.createObjectURL(blob);
+
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = `${he.decode(currentSong.name || 'song')}.m4a`;
+                    link.style.display = 'none';
+
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
+                    console.log('Download started:', currentSong.name);
+                } else {
+                    console.error('No download URL available');
+                }
             }
         } catch (error) {
             console.error('Download error:', error);
@@ -985,21 +1002,24 @@ function PlayerContent() {
                                                     artist.browseId ? (
                                                         <Link key={idx} href={`/artist/${artist.browseId}`} className="flex-shrink-0 w-[45%] snap-start group">
                                                             <div className="relative w-full aspect-square rounded-full overflow-hidden mb-2 bg-zinc-800">
-                                                                {artist.thumbnails?.length > 0 ? (
-                                                                    <img src={upgradeYTThumb(artist.thumbnails.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))[0]?.url)} alt={artist.name} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <div className="w-full h-full bg-gradient-to-br from-purple-900/60 to-zinc-800 flex items-center justify-center">
-                                                                        <span className="text-2xl font-black text-purple-300 uppercase">{(artist.name || '?')[0]}</span>
-                                                                    </div>
-                                                                )}
+                                                                <img
+                                                                    src={artist.thumbnails?.length > 0 ? upgradeYTThumb(artist.thumbnails.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))[0]?.url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name || 'A')}&background=random&color=fff&size=200&bold=true`}
+                                                                    alt={artist.name}
+                                                                    className="w-full h-full object-cover"
+                                                                    onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name || 'A')}&background=random&color=fff&size=200&bold=true`; }}
+                                                                />
                                                             </div>
                                                             <p className="text-white text-sm font-medium text-center line-clamp-1 group-hover:underline">{artist.name}</p>
                                                             <p className="text-gray-400 text-xs text-center">Artist</p>
                                                         </Link>
                                                     ) : (
                                                         <div key={idx} className="flex-shrink-0 w-[45%] snap-start">
-                                                            <div className="w-full aspect-square rounded-full bg-gradient-to-br from-purple-900/40 to-zinc-800 flex items-center justify-center mb-2">
-                                                                <span className="text-2xl font-black text-purple-300 uppercase">{(artist.name || '?')[0]}</span>
+                                                            <div className="w-full aspect-square rounded-full bg-gradient-to-br from-purple-900/40 to-zinc-800 flex items-center justify-center mb-2 overflow-hidden shadow-lg">
+                                                                <img
+                                                                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name || 'A')}&background=random&color=fff&size=200&bold=true`}
+                                                                    alt={artist.name}
+                                                                    className="w-full h-full object-cover"
+                                                                />
                                                             </div>
                                                             <p className="text-white text-sm font-medium text-center line-clamp-1">{artist.name}</p>
                                                             <p className="text-gray-400 text-xs text-center">Artist</p>
@@ -1013,12 +1033,12 @@ function PlayerContent() {
                                     {fullSongDetails.album?.name && (
                                         <div>
                                             <h3 className="text-lg font-bold text-white mb-3">From Album</h3>
-                                            <div className="block w-[45%]">
+                                            <Link href={`/album/${fullSongDetails.album.id}`} className="block w-[45%]">
                                                 <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800">
                                                     <img src={getImageUrl(fullSongDetails.image) || ''} alt={fullSongDetails.album.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                                 </div>
-                                                <p className="text-white text-sm font-bold line-clamp-1">{fullSongDetails.album.name}</p>
-                                            </div>
+                                                <p className="text-white text-sm font-bold line-clamp-1 group-hover:underline">{fullSongDetails.album.name}</p>
+                                            </Link>
                                         </div>
                                     )}
                                     {/* Lyrics (YT) */}
@@ -1303,21 +1323,24 @@ function PlayerContent() {
                                                                 artist.browseId ? (
                                                                     <Link key={idx} href={`/artist/${artist.browseId}`} className="flex-shrink-0 w-[140px] group text-center">
                                                                         <div className="relative w-full aspect-square rounded-full overflow-hidden mb-3 bg-zinc-800 shadow-lg group-hover:scale-105 transition-transform">
-                                                                            {artist.thumbnails?.length > 0 ? (
-                                                                                <img src={upgradeYTThumb(artist.thumbnails.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))[0]?.url)} alt={artist.name} className="w-full h-full object-cover" />
-                                                                            ) : (
-                                                                                <div className="w-full h-full bg-gradient-to-br from-purple-900/60 to-zinc-800 flex items-center justify-center">
-                                                                                    <span className="text-3xl font-black text-purple-300 uppercase">{(artist.name || '?')[0]}</span>
-                                                                                </div>
-                                                                            )}
+                                                                            <img
+                                                                                src={artist.thumbnails?.length > 0 ? upgradeYTThumb(artist.thumbnails.sort((a: any, b: any) => (b.width || 0) - (a.width || 0))[0]?.url) : `https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name || 'A')}&background=random&color=fff&size=200&bold=true`}
+                                                                                alt={artist.name}
+                                                                                className="w-full h-full object-cover"
+                                                                                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name || 'A')}&background=random&color=fff&size=200&bold=true`; }}
+                                                                            />
                                                                         </div>
                                                                         <p className="text-white text-base font-bold line-clamp-1 group-hover:text-primary transition-colors">{artist.name}</p>
                                                                         <p className="text-gray-400 text-sm">Artist</p>
                                                                     </Link>
                                                                 ) : (
                                                                     <div key={idx} className="flex-shrink-0 w-[140px] text-center">
-                                                                        <div className="w-full aspect-square rounded-full bg-gradient-to-br from-purple-900/40 to-zinc-800 flex items-center justify-center mb-3 shadow-lg">
-                                                                            <span className="text-3xl font-black text-purple-300 uppercase">{(artist.name || '?')[0]}</span>
+                                                                        <div className="w-full aspect-square rounded-full bg-gradient-to-br from-purple-900/40 to-zinc-800 flex items-center justify-center mb-3 shadow-lg overflow-hidden">
+                                                                            <img
+                                                                                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name || 'A')}&background=random&color=fff&size=200&bold=true`}
+                                                                                alt={artist.name}
+                                                                                className="w-full h-full object-cover"
+                                                                            />
                                                                         </div>
                                                                         <p className="text-white text-base font-bold line-clamp-1">{artist.name}</p>
                                                                         <p className="text-gray-400 text-sm">Artist</p>
@@ -1332,12 +1355,12 @@ function PlayerContent() {
                                             {fullSongDetails.album?.name && (
                                                 <div>
                                                     <h3 className="text-2xl font-bold text-white mb-4">From Album</h3>
-                                                    <div className="block w-[180px]">
-                                                        <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-3 bg-zinc-800 shadow-lg">
+                                                    <Link href={`/album/${fullSongDetails.album.id}`} className="block w-[180px] group">
+                                                        <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-3 bg-zinc-800 shadow-lg group-hover:scale-105 transition-transform">
                                                             <img src={getImageUrl(fullSongDetails.image) || ''} alt={fullSongDetails.album.name} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                                         </div>
-                                                        <p className="text-white text-lg font-bold line-clamp-1">{fullSongDetails.album.name}</p>
-                                                    </div>
+                                                        <p className="text-white text-lg font-bold line-clamp-1 group-hover:text-primary transition-colors">{fullSongDetails.album.name}</p>
+                                                    </Link>
                                                 </div>
                                             )}
                                         </>

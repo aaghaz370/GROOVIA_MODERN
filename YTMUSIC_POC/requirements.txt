@@ -1,5 +1,12 @@
 fastapi
 uvicorn[standard]
 ytmusicapi
+<<<<<<< HEAD
 yt-dlp==2025.12.08
 httpx
+=======
+pytubefix
+yt-dlp
+httpx
+
+>>>>>>> a1e1a8786edf0db822959330054fa249b12516c4
