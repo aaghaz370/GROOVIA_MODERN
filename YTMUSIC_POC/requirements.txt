@@ -1,4 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 ytmusicapi
-pytubefix
+yt-dlp==2025.12.08
+httpx

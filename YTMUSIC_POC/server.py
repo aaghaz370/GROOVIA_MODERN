@@ -1,18 +1,23 @@
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from ytmusicapi import YTMusic
-import requests
 import uvicorn
-import subprocess
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
-from concurrent.futures import ThreadPoolExecutor
-import time
-from pytubefix import YouTube
+import logging
+import os
+import yt_dlp
+import httpx
 
-app = FastAPI()
+# ─────────────────────────────────────────────────────────────────────────────
+# Setup
+# ─────────────────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Groovia YTMusic API", version="2.0.0")
 
 # Enable CORS
 app.add_middleware(
@@ -23,17 +28,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ────────────────────────────────────────────
-# Thread pool — ytmusicapi calls are blocking
-# 10 workers = 10 concurrent YT requests
-# ────────────────────────────────────────────
+# Thread pool — blocking calls (ytmusicapi, yt-dlp)
 executor = ThreadPoolExecutor(max_workers=12)
 
-# ────────────────────────────────────────────
+# Initialize YTMusic (unauthenticated — public data)
+yt = YTMusic()
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Simple in-memory TTL cache
-# search results change rarely — cache 30 min
-# charts refresh daily — cache 60 min
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 _cache: dict = {}
 _cache_ts: dict = {}
 
@@ -48,17 +51,78 @@ def cache_set(key: str, value, ttl: int = 1800):
     _cache[key] = value
     _cache_ts[key] = {"t": time.time(), "ttl": ttl}
 
-# Initialize YTMusic (unauthenticated — public data)
-yt = YTMusic()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# yt-dlp URL extraction with in-memory cache (~1hr TTL)
+# ─────────────────────────────────────────────────────────────────────────────
+_stream_cache: dict = {}
+
+def _extract_stream_url(video_id: str) -> dict:
+    """
+    Extract best audio stream URL using yt-dlp.
+    Exact same approach as MUZIFY — proven to work.
+    Cached for 1 hour.
+    """
+    cached = _stream_cache.get(video_id)
+    if cached and cached.get("expires_at", 0) > time.time():
+        logger.info(f"✅ Stream cache hit: {video_id}")
+        return cached
+
+    ydl_opts = {
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+        "quiet": True,
+        "no_warnings": True,
+        "socket_timeout": 15,
+        "retries": 3,
+        "extractor_args": {
+            "youtube": {
+                # tv_embedded = no age gate, no throttle
+                "player_client": ["tv_embedded", "android", "web"],
+                "player_skip": ["webpage"],
+            }
+        },
+    }
+
+    # DO NOT use cookies with tv_embedded client, it causes 'app not supported' payload rejection if cookies are stale.
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(
+            f"https://music.youtube.com/watch?v={video_id}", download=False
+        )
+
+    url = info.get("url")
+    if not url:
+        for fmt in reversed(info.get("formats", [])):
+            if fmt.get("url") and fmt.get("acodec") != "none":
+                url = fmt["url"]
+                break
+
+    if not url:
+        raise ValueError(f"Could not extract stream URL for {video_id}")
+
+    result = {
+        "url": url,
+        "ext": info.get("ext", "webm"),
+        "http_headers": info.get("http_headers", {}),
+        "title": info.get("title", video_id),
+        "expires_at": time.time() + 3600,  # 1 hour
+    }
+    _stream_cache[video_id] = result
+    logger.info(f"🎵 Extracted for {video_id} [{result['ext']}] → {url[:60]}...")
+    return result
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Root
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/")
 def read_root():
-    return {"message": "Groovia YTMusic API Proxy is running"}
+    return {"message": "Groovia YTMusic API v2 is running", "status": "healthy"}
 
-# ────────────────────────────────────────────────────────────
-# /search — Fully async + cached
-# ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /search
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/search")
 async def search(query: str, filter: str = None, limit: int = 20):
     cache_key = f"search:{query}:{filter}:{limit}"
@@ -71,14 +135,15 @@ async def search(query: str, filter: str = None, limit: int = 20):
             executor,
             lambda: yt.search(query, filter=filter, limit=limit)
         )
-        cache_set(cache_key, results, ttl=1800)  # 30 min
+        cache_set(cache_key, results, ttl=1800)
         return {"data": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ────────────────────────────────────────────────────────────
-# /watch — Async + cached
-# ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /watch
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/watch")
 async def get_watch_playlist(videoId: str):
     cache_key = f"watch:{videoId}"
@@ -88,14 +153,15 @@ async def get_watch_playlist(videoId: str):
     try:
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(executor, lambda: yt.get_watch_playlist(videoId=videoId))
-        cache_set(cache_key, results, ttl=600)  # 10 min (watch playlists are dynamic)
+        cache_set(cache_key, results, ttl=600)
         return {"data": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ────────────────────────────────────────────────────────────
-# /album — Async + cached
-# ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /album
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/album")
 async def get_album(browseId: str):
     cache_key = f"album:{browseId}"
@@ -105,76 +171,131 @@ async def get_album(browseId: str):
     try:
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(executor, lambda: yt.get_album(browseId=browseId))
-        cache_set(cache_key, results, ttl=3600)  # 1 hour
+        cache_set(cache_key, results, ttl=3600)
         return {"data": results}
     except Exception as e:
-        print(f"Error getting album: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ────────────────────────────────────────────────────────────
-# /stream — Async (no cache — URLs expire)
-# ────────────────────────────────────────────────────────────
-@app.get("/stream")
-async def stream_audio(videoId: str, request: Request, response: Response, download: bool = False):
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /prefetch — warm up URL cache before user presses play
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/prefetch")
+async def prefetch(videoId: str):
+    """Pre-warms the stream URL cache silently in background."""
     try:
-        def extract():
-            yt_vid = YouTube(f"https://www.youtube.com/watch?v={videoId}", client='WEB')
-            audio = yt_vid.streams.get_audio_only()
-            # extract extension from mime_type (e.g., audio/mp4 -> mp4)
-            mime_type = getattr(audio, 'mime_type', 'audio/mp4')
-            ext = mime_type.split('/')[-1] if '/' in mime_type else 'm4a'
-            return audio.url, yt_vid.title, ext, mime_type
-        
         loop = asyncio.get_event_loop()
-        url, title, ext, acodec = await loop.run_in_executor(executor, extract)
-
-        # Proxy the request to Youtube, forwarding the Range header for seeking
-        req_headers = {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36',
-            'Referer': 'https://www.youtube.com/',
-            'Origin': 'https://www.youtube.com',
-        }
-        range_header = request.headers.get('Range')
-        if range_header:
-            req_headers['Range'] = range_header
-
-        def proxy_stream():
-            r = requests.get(url, headers=req_headers, stream=True)
-            return r
-
-        r = await loop.run_in_executor(executor, proxy_stream)
-
-        # pytubefix returns the pre-assigned mime_type directly, e.g. 'audio/mp4'
-        content_type = acodec if acodec.startswith('audio') else r.headers.get('Content-Type', 'audio/mp4')
-
-        # Pass along important headers
-        resp_headers = {'Content-Type': content_type}
-        for h in ["Content-Length", "Content-Range", "Accept-Ranges"]:
-            val = r.headers.get(h)
-            if val:
-                resp_headers[h] = val
-                
-        if download:
-            safe_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-            resp_headers["Content-Disposition"] = f'attachment; filename="{safe_title}.{ext}"'
-        
-        def iterate_stream():
-            try:
-                for chunk in r.iter_content(chunk_size=65536):
-                    if chunk:
-                        yield chunk
-            finally:
-                r.close()
-
-        return StreamingResponse(iterate_stream(), status_code=r.status_code, headers=resp_headers)
-
+        await loop.run_in_executor(executor, _extract_stream_url, videoId)
+        return {"status": "cached", "videoId": videoId}
     except Exception as e:
-        print(f"Error streaming {videoId}: {e}")
+        logger.warning(f"Prefetch failed for {videoId}: {e}")
+        return {"status": "error", "detail": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /stream — Main audio streaming endpoint
+# Replaces pytubefix with yt-dlp for reliability
+# Supports HTTP Range requests (crucial for seek support)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/stream")
+async def stream_audio(
+    videoId: str,
+    range: str = Header(None, alias="range"),
+    request_range: str = Query(None),
+    download: bool = False,
+    title: str = "song"
+):
+    """
+    Proxy-streams audio from YouTube using yt-dlp.
+    Exact MUZIFY approach.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(executor, _extract_stream_url, videoId)
+        url = data["url"]
+        http_headers = data.get("http_headers", {})
+        ext = data.get("ext", "webm")
+
+        req_headers = {
+            "User-Agent": http_headers.get(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0.0.0 Safari/537.36",
+            ),
+        }
+        
+        # Pass range if available
+        if range:
+            req_headers["Range"] = range
+        elif request_range:
+            req_headers["Range"] = request_range
+
+        content_type_map = {
+            "m4a": "audio/mp4",
+            "webm": "audio/webm",
+            "mp4": "audio/mp4",
+            "opus": "audio/ogg",
+        }
+        content_type = content_type_map.get(ext, "audio/webm")
+
+        import httpx
+
+        async def proxy_stream():
+            async with httpx.AsyncClient(timeout=30) as client:
+                async with client.stream(
+                    "GET", url, headers=req_headers, follow_redirects=True
+                ) as resp:
+                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                        yield chunk
+
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "no-cache",
+        }
+        
+        status_code = 206 if (range or request_range) else 200
+
+        if download:
+            safe_title = "".join(c for c in title if c.isalnum() or c in " -_").strip()
+            headers["Content-Disposition"] = f'attachment; filename="{safe_title or videoId}.{ext}"'
+            headers["Access-Control-Expose-Headers"] = "Content-Disposition"
+            status_code = 200  # downloads are usually full files
+
+        return StreamingResponse(
+            proxy_stream(),
+            status_code=status_code,
+            media_type=content_type,
+            headers=headers,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Stream failed for {videoId}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ────────────────────────────────────────────────────────────
-# /playlist — Async + cached
-# ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /download — One-click download (same as /stream?download=true but clean URL)
+# ─────────────────────────────────────────────────────────────────────────────
+@app.get("/download")
+async def download_audio(
+    videoId: str,
+    request: Request,
+    response: Response,
+    title: str = Query("song", description="Song title for filename"),
+):
+    """
+    One-click audio download. Triggers browser file save dialog.
+    """
+    return await stream_audio(videoId, request, response, download=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /playlist
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/playlist")
 async def get_playlist(browseId: str, limit: int = 100):
     cache_key = f"playlist:{browseId}:{limit}"
@@ -187,15 +308,15 @@ async def get_playlist(browseId: str, limit: int = 100):
             executor,
             lambda: yt.get_playlist(playlistId=browseId, limit=limit)
         )
-        cache_set(cache_key, results, ttl=1800)  # 30 min
+        cache_set(cache_key, results, ttl=1800)
         return {"data": results}
     except Exception as e:
-        print(f"Error getting playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ────────────────────────────────────────────────────────────
-# /lyrics — Async + cached
-# ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /lyrics
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/lyrics")
 async def get_lyrics(browseId: str):
     cache_key = f"lyrics:{browseId}"
@@ -205,15 +326,15 @@ async def get_lyrics(browseId: str):
     try:
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(executor, lambda: yt.get_lyrics(browseId=browseId))
-        cache_set(cache_key, results, ttl=86400)  # 24 hours (lyrics don't change)
+        cache_set(cache_key, results, ttl=86400)
         return {"data": results}
     except Exception as e:
-        print(f"Error getting lyrics: {e}")
         return {"data": None}
 
-# ────────────────────────────────────────────────────────────
-# /artist — Async + cached (1 hr TTL)
-# ────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /artist
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/artist")
 async def get_artist_data(channelId: str):
     cache_key = f"artist:{channelId}"
@@ -225,14 +346,17 @@ async def get_artist_data(channelId: str):
         artist = await loop.run_in_executor(executor, lambda: yt.get_artist(channelId))
         if not artist:
             raise HTTPException(status_code=404, detail="Artist not found")
-        cache_set(cache_key, artist, ttl=3600)  # 1 hour
+        cache_set(cache_key, artist, ttl=3600)
         return {"data": artist}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error fetching artist {channelId}: {e}")
         raise HTTPException(status_code=404, detail=f"Artist not found: {str(e)}")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /charts
+# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/charts")
 async def get_charts_data(country: str = "IN"):
     cache_key = f"charts:{country}"
@@ -241,12 +365,9 @@ async def get_charts_data(country: str = "IN"):
         return {"data": cached, "cached": True}
     try:
         loop = asyncio.get_event_loop()
-
-        # Step 1: Get charts metadata
         charts = await loop.run_in_executor(executor, lambda: yt.get_charts(country=country))
 
         songs = []
-        # Step 2: Try to get songs from the chart playlist
         if charts.get("videos"):
             playlist_id = charts["videos"][0].get("playlistId")
             if playlist_id:
@@ -255,12 +376,9 @@ async def get_charts_data(country: str = "IN"):
                     lambda: yt.get_playlist(playlistId=playlist_id, limit=30)
                 )
                 tracks = playlist.get("tracks", []) or []
-                # Only keep tracks with a valid videoId
                 songs = [t for t in tracks if t.get("videoId")]
 
-        # Step 3: Fallback — if still empty, do a direct search
         if not songs:
-            print(f"Charts playlist empty for {country}, falling back to search")
             fallback = await loop.run_in_executor(
                 executor,
                 lambda: yt.search("India Top Songs Hindi 2025", filter="songs", limit=20)
@@ -268,12 +386,11 @@ async def get_charts_data(country: str = "IN"):
             songs = [s for s in (fallback or []) if s.get("videoId")]
 
         result = {"charts": charts, "songs": songs}
-        cache_set(cache_key, result, ttl=3600)  # 1 hour
+        cache_set(cache_key, result, ttl=3600)
         return {"data": result}
     except Exception as e:
-        print(f"Error fetching charts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8005)
