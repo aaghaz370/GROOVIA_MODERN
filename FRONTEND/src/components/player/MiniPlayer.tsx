@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { api } from '@/lib/api';
 import SongImage from '@/components/ui/SongImage';
 import { getImageUrl as getSafeImageUrl } from '@/lib/imageUtils';
-import { YT_API_URL } from '@/lib/config';
+import { YT_API_URL, YT_SCRAPER_URL } from '@/lib/config';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import he from 'he';
@@ -58,7 +58,6 @@ const MiniPlayer = () => {
     // Determine Source
     const isYoutube = !!currentSong?.youtubeId;
 
-<<<<<<< HEAD
     // ── Download Handler ─────────────────────────────────────────────────────
     const handleDownload = () => {
         if (!currentSong || isDownloading) return;
@@ -69,8 +68,8 @@ const MiniPlayer = () => {
         const safeTitle = encodeURIComponent(songTitle);
 
         if (isYoutube && currentSong.youtubeId) {
-            // YT Music song — use backend download endpoint
-            downloadUrl = `${YT_API_URL}/download?videoId=${currentSong.youtubeId}&title=${safeTitle}`;
+            // YT Music song — use Vercel scraper (faster, no bot detection)
+            downloadUrl = `${YT_SCRAPER_URL}/audio/${currentSong.youtubeId}?redirect=true`;
         } else if (currentSong.downloadUrl && currentSong.downloadUrl.length > 0) {
             // Saavn/JioSaavn song — use highest quality downloadUrl
             const best = currentSong.downloadUrl.find(d => d.quality === '320kbps') ||
@@ -93,9 +92,6 @@ const MiniPlayer = () => {
         document.body.removeChild(a);
         setTimeout(() => setIsDownloading(false), 3000);
     };
-=======
-
->>>>>>> a1e1a8786edf0db822959330054fa249b12516c4
 
     // Handle Source Switching & State Reset
     useEffect(() => {
@@ -119,7 +115,8 @@ const MiniPlayer = () => {
             setAudioUrl(''); // Reset
 
             if (isYoutube) {
-                setAudioUrl(`${YT_API_URL}/stream?videoId=${currentSong.youtubeId}`);
+                // Use new Vercel scraper (faster, no bot detection)
+                setAudioUrl(`${YT_SCRAPER_URL}/stream/${currentSong.youtubeId}?quality=high`);
                 return;
             }
 
@@ -381,7 +378,6 @@ const MiniPlayer = () => {
                                 style={{ background: `linear-gradient(to right, #7c3aed ${volume}%, #374151 ${volume}%)` }}
                             />
                         </div>
-<<<<<<< HEAD
                         <button
                             onClick={handleDownload}
                             disabled={isDownloading}
@@ -393,9 +389,6 @@ const MiniPlayer = () => {
                                 : <BiDownload size={20} className="text-gray-400 hover:text-white" />
                             }
                         </button>
-=======
-
->>>>>>> a1e1a8786edf0db822959330054fa249b12516c4
                         <button onClick={() => router.push('/player')} className="p-2 hover:bg-zinc-800 rounded">
                             <BiChevronUp size={20} className="text-gray-400 hover:text-white" />
                         </button>
@@ -433,10 +426,17 @@ const MiniPlayer = () => {
                     }}
                     onError={(e) => {
                         console.error('Audio error:', e);
-                        // Auto-retry with yt-dlp stream if pytubefix/direct URL fails
-                        if (currentSong?.youtubeId && audioUrl && !audioUrl.includes('/stream')) {
-                            console.log('🔄 Retrying with backend stream...');
-                            setAudioUrl(`${YT_API_URL}/stream?videoId=${currentSong.youtubeId}`);
+                        // Auto-retry with fallback
+                        if (currentSong?.youtubeId) {
+                            if (audioUrl?.includes(YT_SCRAPER_URL)) {
+                                // New scraper failed, try old Render backend
+                                console.log('🔄 New scraper failed, retrying with Render backend...');
+                                setAudioUrl(`${YT_API_URL}/stream?videoId=${currentSong.youtubeId}`);
+                            } else if (audioUrl?.includes(YT_API_URL)) {
+                                // Both failed
+                                console.error('❌ Both scrapers failed');
+                                setError(true);
+                            }
                         } else {
                             setError(true);
                         }
