@@ -10,6 +10,7 @@ import logging
 import time
 import os
 import base64
+import shutil
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,14 @@ def _setup_cookies() -> Optional[str]:
     for cookie_file in ["cookies.txt", "yt_cookies.txt", "../www.youtube.com_cookies (1).txt", "../cookies.txt"]:
         path = os.path.join(local_dir, cookie_file)
         if os.path.exists(path):
-            logger.info(f"🍪 Using cookies from {path}")
-            return path
+            try:
+                # yt-dlp might try to write to this file, so copy it to /tmp (read/write on Vercel)
+                shutil.copy2(path, _COOKIES_PATH)
+                logger.info(f"🍪 Using cookies from {path} (copied to {_COOKIES_PATH})")
+                return _COOKIES_PATH
+            except Exception as e:
+                logger.error(f"Failed to copy cookies to /tmp: {e}")
+                return path
 
     logger.warning("⚠️ No cookies found — yt-dlp may get blocked on datacenter IPs")
     return None
