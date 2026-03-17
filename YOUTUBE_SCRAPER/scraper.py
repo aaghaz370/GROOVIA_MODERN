@@ -1,8 +1,6 @@
 """
-YouTube Direct Link Scraper
-Uses yt-dlp (pure-Python) to extract direct audio/video stream URLs.
-Works on Vercel Python — no Node.js / Deno required.
-Requires valid YouTube cookies via YT_COOKIES_B64 env var (same as YTMUSIC_POC).
+YouTube Direct Link Scraper (yt-dlp)
+Properly handles Vercel read-only filesystem and cookies.
 """
 
 import yt_dlp
@@ -17,14 +15,17 @@ logger = logging.getLogger(__name__)
 
 # ── In-memory URL cache (~50 min TTL) ────────────────────────────────────────
 _stream_cache: Dict[str, dict] = {}
-_CACHE_TTL = 3000  # seconds (50 min)
+_CACHE_TTL = 3000
 
-# ── Cookies setup (same pattern as YTMUSIC_POC/server.py) ────────────────────
-_COOKIES_PATH = "/tmp/yt_cookies.txt"
+import tempfile
 
+_TMP_DIR = os.path.join(tempfile.gettempdir(), "yt_scraper")
+_COOKIES_PATH = os.path.join(_TMP_DIR, "yt_cookies.txt")
+
+# Ensure /tmp/yt_scraper exists and is writable
+os.makedirs(_TMP_DIR, exist_ok=True)
 
 def _setup_cookies() -> Optional[str]:
-    """Write cookie file from env var. Returns path if successful, else None."""
     # 1. Try env var (base64-encoded)
     cookies_b64 = os.environ.get("YT_COOKIES_B64", "")
     if cookies_b64:
@@ -32,31 +33,26 @@ def _setup_cookies() -> Optional[str]:
             cookies_txt = base64.b64decode(cookies_b64).decode("utf-8")
             with open(_COOKIES_PATH, "w") as f:
                 f.write(cookies_txt)
-            logger.info("🍪 Decoded YT_COOKIES_B64 and wrote cookies.txt")
+            logger.info("🍪 Decoded YT_COOKIES_B64 to " + _COOKIES_PATH)
             return _COOKIES_PATH
         except Exception as e:
             logger.error(f"❌ Failed to decode ENV cookies: {e}")
 
-    # 2. Try local files (using absolute path relative to this script)
+    # 2. Try local bundled cookies.txt
     local_dir = os.path.dirname(os.path.abspath(__file__))
-    for cookie_file in ["cookies.txt", "yt_cookies.txt", "../www.youtube.com_cookies (1).txt", "../cookies.txt"]:
+    for cookie_file in ["cookies.txt", "../www.youtube.com_cookies (1).txt", "../cookies.txt"]:
         path = os.path.join(local_dir, cookie_file)
         if os.path.exists(path):
             try:
-                # yt-dlp might try to write to this file, so copy it to /tmp (read/write on Vercel)
-                shutil.copy2(path, _COOKIES_PATH)
-                logger.info(f"🍪 Using cookies from {path} (copied to {_COOKIES_PATH})")
+                shutil.copyfile(path, _COOKIES_PATH)
+                logger.info(f"🍪 Copied {path} to {_COOKIES_PATH}")
                 return _COOKIES_PATH
             except Exception as e:
-                logger.error(f"Failed to copy cookies to /tmp: {e}")
-                return path
-
-    logger.warning("⚠️ No cookies found — yt-dlp may get blocked on datacenter IPs")
+                logger.error(f"⚠️ Failed to copy {path}: {e}")
+                
     return None
 
-
 _COOKIES_FILE = _setup_cookies()
-
 
 def _build_ydl_opts(fmt: str = "bestaudio/best") -> dict:
     opts = {
@@ -65,9 +61,10 @@ def _build_ydl_opts(fmt: str = "bestaudio/best") -> dict:
         "skip_download": True,
         "noplaylist": True,
         "format": fmt,
+        "cachedir": _TMP_DIR, # point yt-dlp cache to /tmp
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios"]
+                "player_client": ["android", "web"]
             }
         }
     }
@@ -75,15 +72,12 @@ def _build_ydl_opts(fmt: str = "bestaudio/best") -> dict:
         opts["cookiefile"] = _COOKIES_FILE
     return opts
 
-
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 def _get_cached(video_id: str) -> Optional[dict]:
     entry = _stream_cache.get(video_id)
     if entry and entry.get("expires_at", 0) > time.time():
-        logger.info(f"🗄️  Cache hit: {video_id}")
         return entry["data"]
     return None
-
 
 def _set_cache(video_id: str, data: dict) -> None:
     _stream_cache[video_id] = {
@@ -91,56 +85,46 @@ def _set_cache(video_id: str, data: dict) -> None:
         "expires_at": time.time() + _CACHE_TTL,
     }
 
-
 # ── Core extractor ─────────────────────────────────────────────────────────────
 def extract_streams(video_id: str) -> dict:
-    """
-    Extract all audio and video streams for a YouTube video using yt-dlp.
-    Returns dict with audio_streams and video_streams lists.
-    """
     cached = _get_cached(video_id)
     if cached:
         return cached
 
-    # Try music.youtube.com first, fallback to youtube.com
-    urls_to_try = [
-        f"https://music.youtube.com/watch?v={video_id}",
-        f"https://www.youtube.com/watch?v={video_id}",
-    ]
-
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    
     info = None
-    last_error = None
-    for url in urls_to_try:
+    try:
+        with yt_dlp.YoutubeDL(_build_ydl_opts()) as ydl:
+            # First attempt directly extracting
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        logger.warning(f"yt-dlp first attempt failed: {e}")
+        # Try again with music client (often less restricted)
         try:
+            m_url = f"https://music.youtube.com/watch?v={video_id}"
             with yt_dlp.YoutubeDL(_build_ydl_opts()) as ydl:
-                info = ydl.extract_info(url, download=False)
-            if info:
-                break
-        except Exception as e:
-            last_error = e
-            logger.warning(f"yt-dlp attempt failed for {url}: {e}")
-            continue
-
+                info = ydl.extract_info(m_url, download=False)
+        except Exception as e2:
+            raise Exception(f"yt-dlp failed completely for {video_id}: {e2}")
+            
     if not info:
-        raise Exception(f"yt-dlp failed for {video_id}: {last_error}")
+        raise Exception("Failed to get info dict from yt-dlp")
 
     title = info.get("title", "Unknown")
     thumbnail = info.get("thumbnail", "")
     duration = info.get("duration", 0)
     raw_formats = info.get("formats") or []
 
-    # ── Audio streams ─────────────────────────────────────────────────────────
+    # ── Audio streams
     audio_streams = []
     for f in raw_formats:
-        if not f:
+        if not f or f.get("vcodec") != "none":
             continue
-        if f.get("vcodec") != "none":
-            continue  # skip video/muxed formats
         url_f = f.get("url")
         if not url_f:
             continue
         
-        # Safe extraction of bitrate
         try:
             abr = float(f.get("abr") or 0)
         except (ValueError, TypeError):
@@ -166,7 +150,7 @@ def extract_streams(video_id: str) -> dict:
 
     audio_streams.sort(key=sort_key, reverse=True)
 
-    # ── Video streams ─────────────────────────────────────────────────────────
+    # ── Video streams
     video_streams = []
     for f in raw_formats:
         if not f:
@@ -177,7 +161,8 @@ def extract_streams(video_id: str) -> dict:
         vcodec = f.get("vcodec", "none")
         acodec = f.get("acodec", "none")
         if vcodec == "none":
-            continue  # pure audio — handled above
+            continue  
+            
         stream_type = "progressive" if acodec != "none" else "adaptive"
         video_streams.append({
             "url": url_f,
@@ -199,15 +184,10 @@ def extract_streams(video_id: str) -> dict:
     }
 
     _set_cache(video_id, result)
-    logger.info(
-        f"✅ yt-dlp extracted {len(audio_streams)} audio, {len(video_streams)} video streams for {video_id}"
-    )
+    logger.info(f"✅ Extracted {len(audio_streams)} audio, {len(video_streams)} video streams")
     return result
 
-
-# ── Convenience helpers ───────────────────────────────────────────────────────
 def get_best_audio(video_id: str) -> Optional[dict]:
-    """Get the highest-quality audio stream."""
     try:
         data = extract_streams(video_id)
         streams = data["audio_streams"]
@@ -216,9 +196,7 @@ def get_best_audio(video_id: str) -> Optional[dict]:
         logger.error(f"get_best_audio failed: {e}")
         return None
 
-
 def get_best_video(video_id: str, max_quality: str = "1080p") -> Optional[dict]:
-    """Get best progressive video (falls back to adaptive)."""
     try:
         data = extract_streams(video_id)
         videos = data["video_streams"]
@@ -231,9 +209,7 @@ def get_best_video(video_id: str, max_quality: str = "1080p") -> Optional[dict]:
         logger.error(f"get_best_video failed: {e}")
         return None
 
-
 def get_audio_by_quality(video_id: str, quality: str = "high") -> Optional[dict]:
-    """Get audio stream by quality preference ('high' or 'low')."""
     try:
         data = extract_streams(video_id)
         streams = data["audio_streams"]
