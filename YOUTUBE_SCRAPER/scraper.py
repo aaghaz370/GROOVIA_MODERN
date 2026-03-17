@@ -36,8 +36,10 @@ def _setup_cookies() -> Optional[str]:
         except Exception as e:
             logger.error(f"❌ Failed to decode ENV cookies: {e}")
 
-    # 2. Try local files (for local dev)
-    for path in ["cookies.txt", "../YTMUSIC_POC/cookies.txt", "../cookies.txt"]:
+    # 2. Try local files (using absolute path relative to this script)
+    local_dir = os.path.dirname(os.path.abspath(__file__))
+    for cookie_file in ["cookies.txt", "yt_cookies.txt", "../www.youtube.com_cookies (1).txt", "../cookies.txt"]:
+        path = os.path.join(local_dir, cookie_file)
         if os.path.exists(path):
             logger.info(f"🍪 Using cookies from {path}")
             return path
