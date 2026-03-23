@@ -1,5 +1,5 @@
 fastapi>=0.104.0
 uvicorn>=0.24.0
-yt-dlp
+yt-dlp @ https://github.com/yt-dlp/yt-dlp/archive/master.zip
 httpx>=0.25.0
 python-multipart>=0.0.6

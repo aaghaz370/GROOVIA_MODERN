@@ -64,7 +64,7 @@ def _build_ydl_opts(fmt: str = "bestaudio/best") -> dict:
         "cachedir": _TMP_DIR, # point yt-dlp cache to /tmp
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web"]
+                "player_client": ["web_creator", "web", "android"]
             }
         }
     }
