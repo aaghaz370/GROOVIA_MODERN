@@ -96,25 +96,138 @@ def extract_streams(video_id: str) -> dict:
     info = None
     try:
         with yt_dlp.YoutubeDL(_build_ydl_opts()) as ydl:
-            # First attempt directly extracting
             info = ydl.extract_info(url, download=False)
-    except Exception as e:
-        logger.warning(f"yt-dlp first attempt failed: {e}")
-        # Try again with music client (often less restricted)
+    except Exception as yt_err:
+        logger.warning(f"yt-dlp attempt failed: {yt_err}")
         try:
             m_url = f"https://music.youtube.com/watch?v={video_id}"
             with yt_dlp.YoutubeDL(_build_ydl_opts()) as ydl:
                 info = ydl.extract_info(m_url, download=False)
         except Exception as e2:
-            raise Exception(f"yt-dlp failed completely for {video_id}: {e2}")
-            
-    if not info:
-        raise Exception("Failed to get info dict from yt-dlp")
+            logger.warning(f"yt-dlp music fallback failed: {e2}")
 
+    # Fallback to Invidious/Piped if yt-dlp fails completely (bot block)
+    if not info:
+        logger.info(f"Fallback to Invidious external API for {video_id} (Bypassing Vercel bot blocks)")
+        import httpx
+        import concurrent.futures
+        
+        # List of highly reliable instances running globally
+        instances = [
+            "https://vid.puffyan.us",          # Invidious US
+            "https://invidious.jing.rocks",    # Invidious Europe
+            "https://invidious.nerdvpn.de",    # Invidious DE
+            "https://invidious.fdn.fr",        # Invidious FR
+            "https://api.piped.asia",          # Piped Asia
+        ]
+        
+        fallback_data = None
+        
+        def fetch_instance(base_url):
+            try:
+                # Support both Invidious (/api/v1/videos) and Piped (/streams/) endpoints
+                if "piped" in base_url:
+                    r = httpx.get(f"{base_url}/streams/{video_id}", timeout=8, verify=False)
+                    if r.status_code == 200 and "audioStreams" in r.json():
+                        return ("piped", r.json())
+                else:
+                    r = httpx.get(f"{base_url}/api/v1/videos/{video_id}", timeout=8, verify=False)
+                    if r.status_code == 200 and "adaptiveFormats" in r.json():
+                        return ("invidious", r.json())
+            except:
+                pass
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            for result in executor.map(fetch_instance, instances):
+                if result:
+                    fallback_data = result
+                    break
+        
+        if not fallback_data:
+            raise Exception(f"All scrapers and fallback APIs failed for {video_id}")
+            
+        api_type, f_data = fallback_data
+        audio_streams, video_streams = [], []
+        
+        if api_type == "piped":
+            title = f_data.get("title", f"Video {video_id}")
+            thumbnail = f_data.get("thumbnailUrl", "")
+            duration = f_data.get("duration", 0)
+            
+            for s in f_data.get("audioStreams", []):
+                audio_streams.append({
+                    "url": s.get("url"),
+                    "bitrate": f"{int(s.get('bitrate', 0)/1000)}kbps",
+                    "codec": s.get("codec", "unknown"),
+                    "mimeType": s.get("mimeType", "audio/mp4"),
+                    "quality": "high" if s.get("bitrate", 0) >= 128000 else "low",
+                    "itag": str(s.get("itag", "")),
+                    "size": s.get("contentLength", 0)
+                })
+            for s in f_data.get("videoStreams", []):
+                video_streams.append({
+                    "url": s.get("url"),
+                    "quality": s.get("quality", "unknown"),
+                    "fps": s.get("fps", 30),
+                    "mimeType": s.get("mimeType", "video/mp4"),
+                    "type": "progressive" if s.get("videoOnly") is False else "adaptive",
+                    "itag": str(s.get("itag", "")),
+                    "size": s.get("contentLength", 0)
+                })
+        else:
+            # Invidious parsing
+            title = f_data.get("title", f"Video {video_id}")
+            thumbnail = f_data.get("videoThumbnails", [{"url":""}])[-1]["url"]
+            duration = f_data.get("lengthSeconds", 0)
+            all_fmts = f_data.get("adaptiveFormats", []) + f_data.get("formatStreams", [])
+            
+            for f in all_fmts:
+                t = f.get("type", "")
+                if t.startswith("audio"):
+                    abr = f.get("bitrate", 0) / 1000
+                    audio_streams.append({
+                        "url": f.get("url"),
+                        "bitrate": f"{int(abr)}kbps" if abr > 0 else "unknown",
+                        "codec": "unknown",
+                        "mimeType": t,
+                        "quality": "high" if abr >= 128 else "low",
+                        "itag": f.get("itag", ""),
+                        "size": f.get("clen", 0)
+                    })
+                elif t.startswith("video"):
+                    video_streams.append({
+                        "url": f.get("url"),
+                        "quality": f.get("qualityLabel") or f.get("resolution", "unknown"),
+                        "fps": f.get("fps", 30),
+                        "mimeType": t,
+                        "type": "progressive" if "audio" in t else "adaptive",
+                        "itag": f.get("itag", ""),
+                        "size": f.get("clen", 0)
+                    })
+                    
+        # Sort arrays
+        audio_streams.sort(key=lambda x: int(x["bitrate"].replace("kbps", "")) if x["bitrate"] != "unknown" else 0, reverse=True)
+        video_streams.sort(key=lambda x: int(x["quality"].replace("p", "")) if "p" in x["quality"] else 0, reverse=True)
+
+        res = {
+            "videoId": video_id,
+            "title": title,
+            "thumbnail": thumbnail,
+            "duration": duration,
+            "audio_streams": audio_streams[:8],
+            "video_streams": video_streams[:8],
+        }
+        _set_cache(video_id, res)
+        logger.info(f"✅ Fallback API executed. Extracted {len(audio_streams)} audio streams")
+        return res
+
+    # Original yt-dlp processing
     title = info.get("title", "Unknown")
     thumbnail = info.get("thumbnail", "")
     duration = info.get("duration", 0)
     raw_formats = info.get("formats") or []
+
 
     # ── Audio streams
     audio_streams = []
