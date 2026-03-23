@@ -108,38 +108,59 @@ def extract_streams(video_id: str) -> dict:
 
     # Fallback to Invidious/Piped if yt-dlp fails completely (bot block)
     if not info:
-        logger.info(f"Fallback to Invidious external API for {video_id} (Bypassing Vercel bot blocks)")
+        logger.info(f"Fallback to external Scraper APIs for {video_id} (Bypassing Vercel bot blocks completely)")
         import httpx
         import concurrent.futures
-        
-        # List of highly reliable instances running globally
-        instances = [
-            "https://vid.puffyan.us",          # Invidious US
-            "https://invidious.jing.rocks",    # Invidious Europe
-            "https://invidious.nerdvpn.de",    # Invidious DE
-            "https://invidious.fdn.fr",        # Invidious FR
-            "https://api.piped.asia",          # Piped Asia
-        ]
+        import time
+        from urllib.parse import quote
         
         fallback_data = None
+        target_url = f"https://www.youtube.com/watch?v={video_id}"
         
-        def fetch_instance(base_url):
+        def fetch_api(source):
             try:
-                # Support both Invidious (/api/v1/videos) and Piped (/streams/) endpoints
-                if "piped" in base_url:
-                    r = httpx.get(f"{base_url}/streams/{video_id}", timeout=8, verify=False)
-                    if r.status_code == 200 and "audioStreams" in r.json():
-                        return ("piped", r.json())
-                else:
-                    r = httpx.get(f"{base_url}/api/v1/videos/{video_id}", timeout=8, verify=False)
-                    if r.status_code == 200 and "adaptiveFormats" in r.json():
-                        return ("invidious", r.json())
-            except:
+                if source == "oceansaver":
+                    # Y2Mate.is & SaveFrom backend
+                    base = "https://p.oceansaver.in/ajax/download.php"
+                    r = httpx.get(f"{base}?format=mp4&url={quote(target_url)}&api=dfcb6d76f2f6a9894gjkege8a4ab232222", timeout=12, verify=False)
+                    if r.status_code == 200:
+                        d = r.json()
+                        if d.get("success") and d.get("id"):
+                            tid = d["id"]
+                            # Poll progress exactly 3 times (Vercel has 15s limit generally)
+                            for _ in range(3):
+                                time.sleep(1.5)
+                                p = httpx.get(f"https://p.oceansaver.in/ajax/progress.php?id={tid}", timeout=5, verify=False).json()
+                                if p.get("success") == 1 and p.get("download_url"):
+                                    return ("direct", p["title"], p["download_url"], "video")
+                elif source == "vevioz":
+                    # Often used by MP3 converter sites
+                    r = httpx.get(f"https://api.vevioz.com/api/button/mp4/{video_id}", timeout=10, follow_redirects=True, verify=False)
+                    if r.status_code == 200 and "download" in r.text.lower():
+                        import re
+                        m = re.search(r'href="(https?://[^"]+download[^"]+)"', r.text)
+                        if m: return ("direct", f"Video {video_id}", m.group(1), "video")
+                elif source == "cobalt_kwiatekm":
+                    # Known cobalt instance
+                    r = httpx.post("https://cobalt-api.kwiatekm.dev/", headers={"Accept": "application/json"}, json={"url": target_url}, timeout=10, verify=False)
+                    if r.status_code == 200:
+                        d = r.json()
+                        if d.get("url"): return ("direct", f"Video {video_id}", d["url"], "video")
+                        if d.get("picker"):
+                            for obj in d.get("picker", []):
+                                if obj.get("url"): return ("direct", f"Video {video_id}", obj["url"], "video")
+                elif source == "cobalt_wuk":
+                    r = httpx.post("https://co.wuk.sh/api/json", headers={"Accept": "application/json", "Content-Type": "application/json"}, json={"url": target_url}, timeout=10, verify=False)
+                    if r.status_code == 200:
+                        d = r.json()
+                        if d.get("url"): return ("direct", f"Video {video_id}", d["url"], "video")
+            except Exception as e:
                 pass
             return None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            for result in executor.map(fetch_instance, instances):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            sources = ["oceansaver", "vevioz", "cobalt_kwiatekm", "cobalt_wuk"]
+            for result in executor.map(fetch_api, sources):
                 if result:
                     fallback_data = result
                     break
@@ -147,79 +168,40 @@ def extract_streams(video_id: str) -> dict:
         if not fallback_data:
             raise Exception(f"All scrapers and fallback APIs failed for {video_id}")
             
-        api_type, f_data = fallback_data
+        _, f_title, f_url, f_type = fallback_data
+        
         audio_streams, video_streams = [], []
         
-        if api_type == "piped":
-            title = f_data.get("title", f"Video {video_id}")
-            thumbnail = f_data.get("thumbnailUrl", "")
-            duration = f_data.get("duration", 0)
-            
-            for s in f_data.get("audioStreams", []):
-                audio_streams.append({
-                    "url": s.get("url"),
-                    "bitrate": f"{int(s.get('bitrate', 0)/1000)}kbps",
-                    "codec": s.get("codec", "unknown"),
-                    "mimeType": s.get("mimeType", "audio/mp4"),
-                    "quality": "high" if s.get("bitrate", 0) >= 128000 else "low",
-                    "itag": str(s.get("itag", "")),
-                    "size": s.get("contentLength", 0)
-                })
-            for s in f_data.get("videoStreams", []):
-                video_streams.append({
-                    "url": s.get("url"),
-                    "quality": s.get("quality", "unknown"),
-                    "fps": s.get("fps", 30),
-                    "mimeType": s.get("mimeType", "video/mp4"),
-                    "type": "progressive" if s.get("videoOnly") is False else "adaptive",
-                    "itag": str(s.get("itag", "")),
-                    "size": s.get("contentLength", 0)
-                })
-        else:
-            # Invidious parsing
-            title = f_data.get("title", f"Video {video_id}")
-            thumbnail = f_data.get("videoThumbnails", [{"url":""}])[-1]["url"]
-            duration = f_data.get("lengthSeconds", 0)
-            all_fmts = f_data.get("adaptiveFormats", []) + f_data.get("formatStreams", [])
-            
-            for f in all_fmts:
-                t = f.get("type", "")
-                if t.startswith("audio"):
-                    abr = f.get("bitrate", 0) / 1000
-                    audio_streams.append({
-                        "url": f.get("url"),
-                        "bitrate": f"{int(abr)}kbps" if abr > 0 else "unknown",
-                        "codec": "unknown",
-                        "mimeType": t,
-                        "quality": "high" if abr >= 128 else "low",
-                        "itag": f.get("itag", ""),
-                        "size": f.get("clen", 0)
-                    })
-                elif t.startswith("video"):
-                    video_streams.append({
-                        "url": f.get("url"),
-                        "quality": f.get("qualityLabel") or f.get("resolution", "unknown"),
-                        "fps": f.get("fps", 30),
-                        "mimeType": t,
-                        "type": "progressive" if "audio" in t else "adaptive",
-                        "itag": f.get("itag", ""),
-                        "size": f.get("clen", 0)
-                    })
-                    
-        # Sort arrays
-        audio_streams.sort(key=lambda x: int(x["bitrate"].replace("kbps", "")) if x["bitrate"] != "unknown" else 0, reverse=True)
-        video_streams.sort(key=lambda x: int(x["quality"].replace("p", "")) if "p" in x["quality"] else 0, reverse=True)
+        # We synthesize generic streams from the direct URL (which usually contains both audio/video multiplexed)
+        audio_streams.append({
+            "url": f_url,
+            "bitrate": "128kbps",
+            "codec": "mp4a",
+            "mimeType": "audio/mp4",
+            "quality": "high",
+            "itag": "fallback_a",
+            "size": 0
+        })
+        video_streams.append({
+            "url": f_url,
+            "quality": "720p",
+            "fps": 30,
+            "mimeType": "video/mp4",
+            "type": "progressive",
+            "itag": "fallback_v",
+            "size": 0
+        })
 
         res = {
             "videoId": video_id,
-            "title": title,
-            "thumbnail": thumbnail,
-            "duration": duration,
-            "audio_streams": audio_streams[:8],
-            "video_streams": video_streams[:8],
+            "title": f_title,
+            "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+            "duration": 0,
+            "audio_streams": audio_streams,
+            "video_streams": video_streams,
         }
         _set_cache(video_id, res)
-        logger.info(f"✅ Fallback API executed. Extracted {len(audio_streams)} audio streams")
+        logger.info(f"✅ Fast-Scraper API Fallback executed successfully for {video_id}")
         return res
 
     # Original yt-dlp processing
